@@ -28,6 +28,7 @@ from app.analytics.intervals import (
     Interval,
     accumulate_by_key,
     bucket_timeline,
+    max_concurrent,
     build_intervals,
     hour_of_day_key,
     peak_window,
@@ -298,6 +299,7 @@ async def compute_analytics(
     observed_now = occupied_now + vacant_now
 
     peak_bucket = max(timeline_raw, key=lambda b: b["occupied"], default=None)
+    peak_seats, peak_seats_at = max_concurrent(intervals)
     window = peak_window(timeline_raw, bucket_s)
 
     # Hour-of-day profile (viewer's local time).
@@ -357,7 +359,7 @@ async def compute_analytics(
         obs = sum(r["observed_duration_s"] for r in rows if r["startup_id"] == key)
         assigned = len(e["seat_ids"])
         now_occ = sum(1 for r in rows if r["startup_id"] == key and r["current_status"] == OCCUPIED)
-        peak_conc = max((b["occupied"] for b in tl), default=0.0)
+        peak_conc, _ = max_concurrent(ivs)
         at_capacity_s = sum(bucket_s for b in tl if b["observed"] > 0 and b["occupied"] >= assigned - 0.05)
         observed_buckets_s = sum(bucket_s for b in tl if b["observed"] > 0)
         util = round(occ / obs * 100.0, 1) if obs > 0 else None
@@ -417,6 +419,8 @@ async def compute_analytics(
         "peak": {
             "peak_timestamp": _iso(peak_bucket["t"]) if peak_bucket and peak_bucket["occupied"] > 0 else None,
             "peak_occupied": peak_bucket["occupied"] if peak_bucket else 0,
+            "peak_seats": peak_seats,
+            "peak_seats_at": _iso(peak_seats_at),
             "highest_occupancy_pct": peak_pct,
             "lowest_occupancy_pct": min(observed_pcts) if observed_pcts else None,
             "avg_occupancy_pct": avg_pct,

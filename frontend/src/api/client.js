@@ -56,6 +56,18 @@ export const clearAuthToken = () => {
   sessionStorage.removeItem(TOKEN_KEY);
 };
 
+/** Absolute URL for a backend path (used by <img> streams and WebSockets). */
+export const apiUrl = (path) => `${API_BASE_URL}${path}`;
+
+/** WebSocket URL for a backend path, same origin unless VITE_API_BASE_URL is set. */
+export const wsUrl = (path) => {
+  if (API_BASE_URL) {
+    return API_BASE_URL.replace(/^http/, "ws") + path;
+  }
+  const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+  return `${protocol}//${window.location.host}${path}`;
+};
+
 // ─── Axios Instance ──────────────────────────────────────────────────────────
 
 const apiClient = axios.create({
@@ -106,19 +118,24 @@ apiClient.interceptors.response.use(
         error.response.statusText;
       normalizedError.detail = error.response.data;
 
-      // Handle authentication errors
+      // Expired or missing session: drop the token and let the app show sign-in.
       if (error.response.status === 401) {
         clearAuthToken();
-        // Optionally redirect to login
-        // window.location.href = '/login';
+        window.dispatchEvent(new Event("auth:expired"));
+      }
+      if (Array.isArray(normalizedError.message)) {
+        normalizedError.message = normalizedError.message.map((d) => d.msg || String(d)).join("; ");
+      } else if (typeof normalizedError.message === "object" && normalizedError.message) {
+        normalizedError.message = normalizedError.message.message || JSON.stringify(normalizedError.message);
       }
     } else if (error.request) {
       // Request was made but no response received
       if (error.code === "ECONNABORTED" || error.message?.includes("timeout")) {
-        normalizedError.message = "Upload timed out. Please check your network upload speed or verify the server configuration.";
+        normalizedError.message = "The request timed out. Check your connection and try again.";
       } else {
-        normalizedError.message = "Unable to reach the backend server (FastAPI may be offline or restarting). Please check if it is running.";
+        normalizedError.message = "Can't reach the server. Check that the backend is running, then retry.";
       }
+      normalizedError.offline = true;
     } else {
       // Error in request configuration
       normalizedError.message = error.message;

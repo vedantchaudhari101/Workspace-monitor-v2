@@ -1,107 +1,89 @@
 /**
- * Workspace Monitor — Root Application Component
- *
- * Sets up React Router with the application layout and page routes.
- * All routes are rendered inside the Layout component which provides
- * the persistent sidebar and app bar.
- *
- * Route Structure:
- * /              → Dashboard (Phase 1)
- * /live-map      → Live Seat Map (Phase 4)
- * /analytics     → Analytics (Phase 5)
- * /trends        → Occupancy Trends (Phase 5)
- * /revenue       → Revenue Dashboard (Phase 5)
- * /recommendations → Recommendations (Phase 6)
- * /settings      → Admin Settings (Phase 7)
- *
- * Dependencies: react-router-dom, Layout component, page components
+ * Workspace Monitor — root component: sign-in gate, workspace context and routes.
+ * Heavier pages are split into their own chunks.
  */
 
-import { useState, useEffect } from "react";
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
-import Layout from "./components/Layout";
-import Dashboard from "./pages/Dashboard";
-import Analytics from "./pages/Analytics";
-import Recommendations from "./pages/Recommendations";
+import { lazy, Suspense, useEffect, useState } from "react";
+import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
+import AppShell from "./components/shell/AppShell";
 import Login from "./pages/Login";
+import Live from "./pages/Live";
+import { WorkspaceProvider } from "./lib/workspace";
 import { getAuthToken, getCurrentUser } from "./api/client";
+import { Skeleton } from "./components/feedback";
+
+const Analytics = lazy(() => import("./pages/Analytics"));
+const Recommendations = lazy(() => import("./pages/Recommendations"));
+const Explorer = lazy(() => import("./pages/Explorer"));
+const Insights = lazy(() => import("./pages/Insights"));
+const Session = lazy(() => import("./pages/Session"));
+
+function PageFallback() {
+  return (
+    <div className="page">
+      <Skeleton height={44} width="36%" />
+      <Skeleton height={320} style={{ marginTop: 24 }} />
+    </div>
+  );
+}
 
 export default function App() {
-  const [isAuthenticated, setIsAuthenticated] = useState(!!getAuthToken());
-  const [loading, setLoading] = useState(true);
+  const [auth, setAuth] = useState(getAuthToken() ? "checking" : "signed-out");
 
   useEffect(() => {
-    const initAuth = async () => {
-      const token = getAuthToken();
-      if (token) {
+    if (auth !== "checking") return;
+    getCurrentUser()
+      .then((user) => {
         try {
-          const user = await getCurrentUser();
           localStorage.setItem("user_name", user.full_name);
-          localStorage.setItem("user_email", user.email);
-          setIsAuthenticated(true);
-        } catch (err) {
-          console.error("Token verification failed:", err);
-          setIsAuthenticated(false);
+        } catch {
+          /* ignore */
         }
-      } else {
-        setIsAuthenticated(false);
-      }
-      setLoading(false);
-    };
+        setAuth("signed-in");
+      })
+      .catch(() => setAuth("signed-out"));
+  }, [auth]);
 
-    initAuth();
+  useEffect(() => {
+    const onExpired = () => setAuth("signed-out");
+    window.addEventListener("auth:expired", onExpired);
+    return () => window.removeEventListener("auth:expired", onExpired);
   }, []);
 
-  const handleLoginSuccess = (user) => {
-    localStorage.setItem("user_name", user.full_name);
-    localStorage.setItem("user_email", user.email);
-    setIsAuthenticated(true);
-  };
+  if (auth === "checking") return <PageFallback />;
 
-  if (loading) {
+  if (auth === "signed-out") {
     return (
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "center",
-          alignItems: "center",
-          minHeight: "100vh",
-          fontFamily: "Nunito, sans-serif",
-          backgroundColor: "#F7F7F7",
+      <Login
+        onLoginSuccess={(user) => {
+          try {
+            localStorage.setItem("user_name", user.full_name);
+          } catch {
+            /* ignore */
+          }
+          setAuth("signed-in");
         }}
-      >
-        <h3 style={{ color: "#4B4B4B", fontWeight: 800 }}>Loading Workspace Monitor...</h3>
-      </div>
+      />
     );
-  }
-
-  if (!isAuthenticated) {
-    return <Login onLoginSuccess={handleLoginSuccess} />;
   }
 
   return (
     <BrowserRouter>
-      <Routes>
-        <Route path="/" element={<Layout />}>
-          {/* Phase 1 — Active */}
-          <Route index element={<Dashboard />} />
-
-          {/* Phase 5 — Analytics */}
-          <Route
-            path="analytics"
-            element={<Analytics />}
-          />
-
-          {/* Phase 6 — Recommendations */}
-          <Route
-            path="recommendations"
-            element={<Recommendations />}
-          />
-
-          {/* Catch-all → redirect to dashboard */}
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Route>
-      </Routes>
+      <WorkspaceProvider>
+        <Suspense fallback={<PageFallback />}>
+          <Routes>
+            <Route path="/" element={<AppShell />}>
+              <Route index element={<Live />} />
+              <Route path="analytics" element={<Analytics />} />
+              <Route path="recommendations" element={<Recommendations />} />
+              <Route path="explorer" element={<Explorer />} />
+              <Route path="insights" element={<Insights />} />
+              <Route path="sessions/:sessionId" element={<Session />} />
+              <Route path="*" element={<Navigate to="/" replace />} />
+            </Route>
+          </Routes>
+        </Suspense>
+      </WorkspaceProvider>
     </BrowserRouter>
   );
 }

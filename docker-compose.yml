@@ -1,82 +1,51 @@
 # =============================================================================
-# Workspace Monitor — Docker Compose (Production)
+# Workspace Monitor — Docker Compose
 # =============================================================================
-# Three-service stack: PostgreSQL 16, FastAPI backend, React frontend (nginx)
-# Usage: docker compose up -d
+# One app container (API + CV pipeline + web app) and PostgreSQL 16.
+#   docker compose up --build        → http://localhost:8000
+# Without PostgreSQL, `docker build . && docker run -p 7860:7860` uses SQLite.
 # =============================================================================
 
 services:
   db:
     image: postgres:16-alpine
-    container_name: workspace-monitor-db
     environment:
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER:-workspace_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-workspace_pass_dev}
+      POSTGRES_DB: ${POSTGRES_DB:-workspace_monitor}
     volumes:
       - pgdata:/var/lib/postgresql/data
-    ports:
-      - "${POSTGRES_PORT:-5432}:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-workspace_user} -d ${POSTGRES_DB:-workspace_monitor}"]
       interval: 10s
       timeout: 5s
       retries: 5
     restart: unless-stopped
-    networks:
-      - workspace-net
 
-  backend:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
-    container_name: workspace-monitor-backend
+  app:
+    build: .
     depends_on:
       db:
         condition: service_healthy
     environment:
-      - POSTGRES_HOST=db
-      - POSTGRES_PORT=5432
-      - POSTGRES_USER=${POSTGRES_USER}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
-      - POSTGRES_DB=${POSTGRES_DB}
-      - APP_NAME=${APP_NAME}
-      - APP_VERSION=${APP_VERSION}
-      - DEBUG=${DEBUG:-false}
-      - LOG_LEVEL=${LOG_LEVEL:-INFO}
-      - CORS_ORIGINS=${CORS_ORIGINS}
-      - SECRET_KEY=${SECRET_KEY}
-      - ALGORITHM=${ALGORITHM:-HS256}
-      - ACCESS_TOKEN_EXPIRE_MINUTES=${ACCESS_TOKEN_EXPIRE_MINUTES:-30}
-      - OAUTH2_CLIENT_ID=${OAUTH2_CLIENT_ID}
-      - OAUTH2_CLIENT_SECRET=${OAUTH2_CLIENT_SECRET}
-      - OAUTH2_REDIRECT_URI=${OAUTH2_REDIRECT_URI}
-      - YOLO_MODEL_PATH=${YOLO_MODEL_PATH:-yolo26n.pt}
-      - CONFIDENCE_THRESHOLD=${CONFIDENCE_THRESHOLD:-0.5}
-      - FRAME_SKIP_INTERVAL=${FRAME_SKIP_INTERVAL:-5}
+      PORT: 8000
+      USE_SQLITE: "false"
+      POSTGRES_HOST: db
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: ${POSTGRES_USER:-workspace_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-workspace_pass_dev}
+      POSTGRES_DB: ${POSTGRES_DB:-workspace_monitor}
+      SECRET_KEY: ${SECRET_KEY:-change-this-in-production}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@workspace.dev}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-Admin@12345}
+      DEMO_MODE: ${DEMO_MODE:-false}
+      SEED_DEMO: ${SEED_DEMO:-false}
     ports:
-      - "${BACKEND_PORT:-8000}:8000"
+      - "8000:8000"
+    volumes:
+      - appdata:/data
     restart: unless-stopped
-    networks:
-      - workspace-net
-
-  frontend:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile
-    container_name: workspace-monitor-frontend
-    depends_on:
-      - backend
-    ports:
-      - "80:80"
-    restart: unless-stopped
-    networks:
-      - workspace-net
 
 volumes:
   pgdata:
-    driver: local
-
-networks:
-  workspace-net:
-    driver: bridge
+  appdata:

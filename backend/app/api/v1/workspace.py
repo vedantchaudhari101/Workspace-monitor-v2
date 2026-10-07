@@ -12,6 +12,8 @@ from app.config import get_settings
 from app.models import Building, Camera, Floor, OccupancyEvent, Seat, Startup, Zone
 from app.models.occupancy_event import DEMO_SOURCES
 from app.services.seat_history import compute_analytics, load_seats
+from app.api.v1.occupancy import snapshot_path
+import os
 
 router = APIRouter()
 
@@ -44,6 +46,7 @@ async def workspace_context(db: DbSession, _user: CurrentUser, building_id: UUID
             "mode": consumer.mode if consumer else "idle",
             "status": consumer.status if consumer else "IDLE",
             "running": bool(consumer and consumer.running),
+            "has_snapshot": os.path.isfile(snapshot_path(c.id)),
         })
 
     demo_seats = (await db.execute(select(func.count(Seat.id)).where(Seat.source == "SEED"))).scalar_one()
@@ -114,6 +117,9 @@ async def workspace_map(
                 continue
             cam = cam_by_zone.get(z.id)
             cfg = (cam.config or {}) if cam else {}
+            from app.api.v1.occupancy import snapshot_path
+            import os as _os
+
             fz.append({
                 "zone_id": str(z.id),
                 "name": z.name,
@@ -122,6 +128,7 @@ async def workspace_map(
                     "id": str(cam.id), "name": cam.name,
                     "frame_w": cfg.get("frame_w") or cam.resolution_width,
                     "frame_h": cfg.get("frame_h") or cam.resolution_height,
+                    "has_snapshot": _os.path.isfile(snapshot_path(cam.id)),
                 } if cam else None,
                 "seats": zs,
             })

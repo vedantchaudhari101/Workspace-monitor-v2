@@ -374,6 +374,17 @@ class VideoCaptureConsumer:
                 cap.release()
                 if not ok:
                     return None
+                # Keep a reference still of the room for seat maps (unannotated).
+                try:
+                    still = frame
+                    if still.shape[1] > STREAM_MAX_WIDTH:
+                        k = STREAM_MAX_WIDTH / still.shape[1]
+                        still = cv2.resize(still, (STREAM_MAX_WIDTH, int(still.shape[0] * k)), interpolation=cv2.INTER_AREA)
+                    snap_dir = os.path.join(settings.UPLOAD_DIR, "snapshots")
+                    os.makedirs(snap_dir, exist_ok=True)
+                    cv2.imwrite(os.path.join(snap_dir, f"{self.camera_id}.jpg"), still, [cv2.IMWRITE_JPEG_QUALITY, 72])
+                except Exception as snap_err:
+                    logger.warning(f"[{self.camera_id}] Could not save snapshot: {snap_err}")
                 _, buf = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 70])
                 return buf.tobytes()
 
@@ -701,9 +712,10 @@ class VideoCaptureConsumer:
             "video_ts": round(video_ts, 2) if video_ts is not None else None,
             "at": _now().isoformat(),
             "demo": source != EventSource.VIDEO,
+            "session_id": self.session_id,
         }
         self.recent_transitions.appendleft(item)
-        await ws_manager.broadcast({"type": "seat_transition", "camera_id": str(self.camera_id), "session_id": self.session_id, **item})
+        await ws_manager.broadcast({"type": "seat_transition", "camera_id": str(self.camera_id), **item})
 
     async def _event_writer(self) -> None:
         """Single writer that batches inserts — avoids SQLite lock contention."""

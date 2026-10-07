@@ -71,7 +71,8 @@ async def predict_occupancy_trend(
     grouped = df.groupby(["day_of_week", "hour"])[["occupancy_rate", "total_seats"]].mean().reset_index()
 
     # Fit linear trend to occupancy rate
-    df["sec"] = df["timestamp"].view("int64") // 10**9
+    # Series.view was removed in pandas 3; convert explicitly to epoch seconds.
+    df["sec"] = df["timestamp"].apply(lambda t: t.timestamp())
 
     if len(df) >= 2:
         try:

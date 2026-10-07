@@ -1,0 +1,78 @@
+/*
+ * Workspace Monitor — design tokens
+ *
+ * Concept: "the room, as the system sees it". A dark sensor-room base,
+ * one cool system accent used for things the machine is doing (scanning,
+ * focus, people it has found), and the two occupancy states, which are the
+ * only saturated colours in the product.
+ */
+
+:root {
+  color-scheme: dark;
+
+  /* Base */
+  --bg: #0e1013;
+  --bg-sunken: #0a0c0e;
+  --surface: #14171b;
+  --surface-2: #1a1e23;
+  --surface-3: #22272d;
+  --line: rgba(214, 226, 236, 0.08);
+  --line-strong: rgba(214, 226, 236, 0.16);
+
+  /* Text */
+  --text: #e8ecef;
+  --text-2: #9aa3ad;
+  --text-3: #6a737d;
+  --text-inverse: #0e1013;
+
+  /* System accent — scanning, focus, detected people */
+  --scan: #7fdbf0;
+  --scan-dim: rgba(127, 219, 240, 0.14);
+  --scan-faint: rgba(127, 219, 240, 0.06);
+
+  /* Occupancy semantics (match the OpenCV overlay colours) */
+  --occupied: #ff5a5f;
+  --occupied-dim: rgba(255, 90, 95, 0.16);
+  --available: #2ed47a;
+  --available-dim: rgba(46, 212, 122, 0.14);
+  --unknown: #5b636c;
+  --warn: #f2b84b;
+  --warn-dim: rgba(242, 184, 75, 0.14);
+
+  /* Type */
+  --font-sans: "Geist Variable", "Geist", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "Geist Mono Variable", "Geist Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+
+  --fs-xs: 0.75rem;     /* 12 */
+  --fs-sm: 0.8125rem;   /* 13 */
+  --fs-base: 0.9375rem; /* 15 */
+  --fs-md: 1.0625rem;   /* 17 */
+  --fs-lg: 1.375rem;    /* 22 */
+  --fs-xl: 2rem;        /* 32 */
+  --fs-2xl: 2.75rem;    /* 44 */
+  --fs-display: clamp(3rem, 6vw, 4.75rem);
+
+  /* Space (4px grid) */
+  --s-1: 4px;
+  --s-2: 8px;
+  --s-3: 12px;
+  --s-4: 16px;
+  --s-5: 24px;
+  --s-6: 32px;
+  --s-7: 48px;
+  --s-8: 64px;
+
+  /* Shape — small radii; hierarchy comes from line and space, not cards */
+  --r-sm: 4px;
+  --r-md: 8px;
+  --r-lg: 12px;
+
+  --rail-w: 232px;
+  --content-max: 1440px;
+
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --dur-fast: 140ms;
+  --dur: 240ms;
+
+  --focus: 0 0 0 2px var(--bg), 0 0 0 4px var(--scan);
+}

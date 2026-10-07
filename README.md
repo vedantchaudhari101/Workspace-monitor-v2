@@ -1,314 +1,179 @@
-# 🏢 Workspace Monitor — AI-Powered Smart Workspace Occupancy Monitoring Platform
+# Workspace Monitor
 
-![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)
-![Python 3.12+](https://img.shields.io/badge/Python-3.12+-3776AB.svg?logo=python&logoColor=white)
-![React 19](https://img.shields.io/badge/React-19-61DAFB.svg?logo=react&logoColor=white)
-![FastAPI](https://img.shields.io/badge/FastAPI-0.115+-009688.svg?logo=fastapi&logoColor=white)
-![PostgreSQL 16](https://img.shields.io/badge/PostgreSQL-16-4169E1.svg?logo=postgresql&logoColor=white)
-![Docker](https://img.shields.io/badge/Docker-Compose-2496ED.svg?logo=docker&logoColor=white)
+Seat-level workspace occupancy from ordinary camera video.
 
----
+Upload footage of a room. The system calibrates the seat layout from the first frames, tracks which person owns which chair with YOLO pose estimation, and turns those observations into measured utilization, peak periods, team allocation figures and rule-based recommendations.
 
-**Workspace Monitor** is an intelligent, real-time workspace occupancy monitoring platform that leverages **YOLO-based computer vision** to detect and track people across office zones. It provides live dashboards, historical analytics, heatmaps, and AI-driven recommendations to optimize space utilization — helping organizations reduce real-estate costs, improve employee experience, and make data-driven workplace decisions.
+Built during an Advanced Analytics internship at Jio Platforms (report: *Chair Occupancy Detection*, Vedant Nitin Chaudhari, IIIT Guwahati).
 
 ---
 
-## ✨ Key Features
+## What it does
 
-| # | Feature | Description |
-|---|---------|-------------|
-| 1 | **Real-Time Occupancy Detection** | YOLO v11-powered computer vision pipeline processes CCTV/IP camera feeds to count occupants per zone in real time. |
-| 2 | **Interactive Dashboard** | Rich React dashboard with live counters, trend charts, and zone-level breakdowns updated via polling or WebSockets. |
-| 3 | **Historical Analytics** | Query and visualize occupancy trends over hours, days, weeks, and months with flexible date-range filters. |
-| 4 | **Heatmap Visualization** | Spatial heatmaps overlaid on floor plans show hotspots and underutilized areas at a glance. |
-| 5 | **AI Recommendations** | Rule-based and ML-driven engine suggests optimal desk assignments, meeting room consolidation, and cleaning schedules. |
-| 6 | **Multi-Zone Management** | Define, edit, and monitor unlimited zones (floors, rooms, open areas) with individual capacity thresholds and alerts. |
-| 7 | **OAuth2 / JWT Authentication** | Secure login with Google/Microsoft OAuth2 or local credentials; role-based access control for admins, managers, and viewers. |
-| 8 | **Alerting & Notifications** | Configurable alerts when zones exceed capacity thresholds — via in-app banners, email, or webhook integrations. |
-| 9 | **RESTful API** | Fully documented FastAPI backend with auto-generated OpenAPI/Swagger docs, versioned endpoints, and consistent error handling. |
-| 10 | **Dockerized Deployment** | One-command deployment with Docker Compose — separate production and development configurations included. |
+| Area | What you get |
+|---|---|
+| **Live** | Upload a video (or run the bundled sample). Watch real pipeline stages: upload → seat calibration → occupancy tracking → summary. The annotated stream shows seats in **red when occupied, green when available**, synced with a seat map drawn in the camera's own coordinates and a live activity feed. |
+| **Session summary** | Per video: seats detected, peak occupancy and when, average occupancy, occupied seat-time, most/least used seat, peak period, per-seat sessions, plus calibration diagnostics and throughput. |
+| **Analytics** | Time-weighted occupancy over 1 h – 7 days, hour-of-day profile, seat × hour heatmap, per-seat utilization (occupied, vacant, sessions, average and longest session), capacity, team utilization, CSV export. |
+| **Explorer** | Every seat by floor and zone with filters (status, team, zone, utilization, label). Open any seat for its history and assign it to a team. |
+| **Recommendations** | Measured insights, rule-based recommendations (each shows its rule and evidence), and the seat-allocation engine with approve/reject. |
+| **Insights** | Workspace health score with published formulas, capacity warnings and unusual activity. |
+
+### Honest data
+
+* Every figure is computed from stored state changes and **measured in time**, never from event counts.
+* Every occupancy event records where it came from (`VIDEO`, `MOCK`, `SEED`, `LEGACY`). Analytics use only real CV output unless you switch on **demo data**, and the UI labels demo data wherever it appears.
+* When a video ends, every seat gets a closing `UNKNOWN` event, so a seat is never counted as occupied after the camera stopped watching it.
+* Nothing is presented as machine learning that isn't. The forecast is labelled as a statistical model, and learned recommendations are listed as future work.
 
 ---
 
-## 🏗️ Architecture
+## Architecture
 
-```mermaid
-graph TB
-    subgraph Frontend
-        REACT[React Dashboard]
-    end
-    subgraph Backend
-        API[FastAPI REST API]
-        CV[Computer Vision Pipeline]
-        ANALYTICS[Analytics Engine]
-        RECO[Recommendation Engine]
-    end
-    subgraph Data
-        DB[(PostgreSQL 16)]
-    end
-    subgraph External
-        CAM[CCTV / IP Cameras]
-    end
-    REACT -->|REST API| API
-    CAM -->|Video Feed| CV
-    CV --> API
-    API --> DB
-    ANALYTICS --> DB
-    RECO --> DB
+```
+Browser (React 19 + Vite)
+   │  REST  /api/v1/*              │  WebSocket /api/v1/occupancy/ws      │  MJPEG /camera/{id}/stream
+   ▼                               ▼                                       ▼
+FastAPI ──────────────────────────────────────────────────────────────────────────────
+   │  services: seat_history (time-weighted analytics) · insights (rules) · recommendations
+   │  cv/capture: one consumer per camera
+   │     Phase 1  ChairDetector.calibrate()          yolov8n (chairs, couches, people, screens)
+   │     Phase 2  SeatOccupancyProcessor             yolov8n-pose + ByteTrack, ~5 checks/s
+   │     batched event writer → occupancy_events     session summary → analysis_sessions
+   ▼
+SQLite (default) or PostgreSQL 16 · Alembic migrations applied on startup
 ```
 
----
+The production image serves the built web app from the API process, so one container and one URL run everything.
 
-## 🛠️ Tech Stack
+### Computer-vision pipeline (`backend/app/cv/processor.py`)
 
-| Layer | Technology | Purpose |
-|-------|-----------|---------|
-| **Frontend** | React 19, Vite 6, Recharts, React Router | SPA dashboard with charts and routing |
-| **Styling** | CSS Modules / Vanilla CSS | Scoped, maintainable styling |
-| **Backend** | FastAPI, Uvicorn, Pydantic v2 | Async REST API with validation |
-| **ORM** | SQLAlchemy 2.0 (async) | Database models and queries |
-| **Database** | PostgreSQL 16 | Relational data store |
-| **Computer Vision** | Ultralytics YOLOv11, OpenCV | Person detection and counting |
-| **Auth** | OAuth2, python-jose (JWT) | Secure authentication |
-| **Containerization** | Docker, Docker Compose | Reproducible deployments |
-| **Reverse Proxy** | Nginx | Static file serving, API proxy |
-| **Testing** | Pytest, React Testing Library, Vitest | Unit and integration tests |
+`CV_PIPELINE=report` (default) implements the method described in the project report:
+
+* **Calibration** over the first `CALIBRATION_FRAMES` (150) frames: geometry gates on box size and shape; person-free frames preferred when at least 8 exist; confidence-ordered clustering with a merge radius of `min(w, h) × 0.5`; a persistence filter (≥ 15 % of frames); a static-object veto for screens and laptops misread as chairs; post-cluster NMS (centres within 6 % of the shorter side, plus nested-box duplicates).
+* **Tracking**: torso-segment point weighted 70 % toward the hips; a velocity gate that ignores people moving more than 32 px (at 720p) between checks; exclusive ownership so one person can credit at most one seat, with a 30 % cross-axis expansion; the hip/knee posture check; and a 15/10 consecutive-reading hysteresis.
+* **Seat identity**: re-uploading from the same camera matches new detections to known seats by IoU, so seat IDs, history and team assignments carry over. Seats that disappear are deactivated, never deleted.
+
+`CV_PIPELINE=legacy` keeps the original IoU-clustering and containment pipeline for comparison.
 
 ---
 
-## 📋 Prerequisites
+## Run it locally
 
-| Tool | Version | Check |
-|------|---------|-------|
-| **Docker** | 24+ | `docker --version` |
-| **Docker Compose** | v2+ (built-in) | `docker compose version` |
-| **Node.js** *(local dev)* | 22+ | `node --version` |
-| **Python** *(local dev)* | 3.12+ | `python --version` |
-| **Git** | 2.40+ | `git --version` |
-
----
-
-## 🚀 Quick Start
-
-### 1. Clone & Configure
+Requirements: Python 3.11+, Node 20+.
 
 ```bash
-git clone https://github.com/your-org/workspace-monitor.git
-cd workspace-monitor
-cp .env.example .env
-# Edit .env with your secrets and configuration
-```
-
-### 2. Launch with Docker Compose
-
-```bash
-# Production
-docker compose up -d --build
-
-# Development (with hot-reload)
-docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
-```
-
-### 3. Access the Application
-
-| Service | URL |
-|---------|-----|
-| Frontend (prod) | [http://localhost](http://localhost) |
-| Frontend (dev) | [http://localhost:5173](http://localhost:5173) |
-| Backend API | [http://localhost:8000](http://localhost:8000) |
-| API Docs (Swagger) | [http://localhost:8000/docs](http://localhost:8000/docs) |
-| API Docs (ReDoc) | [http://localhost:8000/redoc](http://localhost:8000/redoc) |
-
----
-
-## 💻 Local Development
-
-### Backend
-
-```bash
+# Backend (API + CV) on :8000
 cd backend
-
-# Create virtual environment
-python -m venv .venv
-source .venv/bin/activate   # Linux/macOS
-.venv\Scripts\activate      # Windows
-
-# Install dependencies
+python -m venv .venv && source .venv/bin/activate      # Windows: .venv\Scripts\activate
+pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu   # CPU build, much smaller
 pip install -r requirements.txt
+cp .env.example .env
+python -m scripts.seed_data          # optional: example building with demo data
+uvicorn app.main:app --reload
 
-# Run with auto-reload
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
-```
-
-### Frontend
-
-```bash
+# Frontend on :5173 (proxies /api to :8000)
 cd frontend
-
-# Install dependencies
 npm install
-
-# Run dev server
 npm run dev
-
-# Build for production
-npm run build
 ```
 
-### Database
+Sign in with the bootstrap admin from `.env` (default `admin@workspace.dev` / `Admin@12345`). On first start the API applies migrations, creates the admin account, a building and a camera. YOLO weights download automatically the first time a video is processed.
+
+### Docker
 
 ```bash
-# Start only the database service
-docker compose up db -d
-
-# Connect with psql
-docker compose exec db psql -U workspace_user -d workspace_monitor
+docker build -t workspace-monitor .
+docker run -p 7860:7860 -e SEED_DEMO=true workspace-monitor      # SQLite, http://localhost:7860
+docker compose up --build                                          # with PostgreSQL, http://localhost:8000
 ```
 
+Hosting for a public demo link is covered in [DEPLOYMENT.md](DEPLOYMENT.md).
+
 ---
 
-## 📁 Project Structure
+## Getting good results
 
-```text
-workspace-monitor/
-├── .env.example                 # Environment variable template
-├── .gitignore                   # Git ignore rules
-├── docker-compose.yml           # Production compose
-├── docker-compose.dev.yml       # Development overrides
-├── README.md                    # This file
-│
-├── backend/
-│   ├── Dockerfile               # Multi-stage Python build
-│   ├── requirements.txt         # Python dependencies
-│   ├── alembic.ini              # Database migrations config
-│   ├── alembic/                 # Migration scripts
-│   └── app/
-│       ├── main.py              # FastAPI application entry
-│       ├── api/                 # Route handlers (v1/)
-│       │   └── v1/
-│       │       ├── zones.py
-│       │       ├── occupancy.py
-│       │       ├── analytics.py
-│       │       └── auth.py
-│       ├── core/                # Config, security, logging
-│       │   ├── config.py
-│       │   ├── security.py
-│       │   └── logging.py
-│       ├── models/              # SQLAlchemy ORM models
-│       │   ├── zone.py
-│       │   ├── occupancy.py
-│       │   └── user.py
-│       ├── schemas/             # Pydantic request/response
-│       │   ├── zone.py
-│       │   ├── occupancy.py
-│       │   └── user.py
-│       ├── services/            # Business logic
-│       │   ├── zone_service.py
-│       │   ├── occupancy_service.py
-│       │   └── analytics_service.py
-│       ├── cv/                  # Computer vision pipeline
-│       │   ├── detector.py
-│       │   └── processor.py
-│       └── db/                  # Database session & utils
-│           ├── session.py
-│           └── base.py
-│
-├── frontend/
-│   ├── Dockerfile               # Multi-stage Node build
-│   ├── nginx.conf               # Nginx SPA + proxy config
-│   ├── package.json             # Node dependencies
-│   ├── vite.config.js           # Vite configuration
-│   ├── index.html               # HTML entry point
-│   └── src/
-│       ├── main.jsx             # React entry
-│       ├── App.jsx              # Root component
-│       ├── components/          # Reusable UI components
-│       │   ├── Dashboard/
-│       │   ├── Heatmap/
-│       │   └── Charts/
-│       ├── pages/               # Route-level pages
-│       │   ├── DashboardPage.jsx
-│       │   ├── AnalyticsPage.jsx
-│       │   └── ZonesPage.jsx
-│       ├── hooks/               # Custom React hooks
-│       │   ├── useOccupancy.js
-│       │   └── useZones.js
-│       ├── services/            # API client functions
-│       │   └── api.js
-│       └── styles/              # Global and module CSS
-│           └── index.css
-│
-└── docs/
-    └── architecture.md          # Detailed architecture doc
+* Use a fixed, elevated camera that can see the chairs, ideally the whole seat.
+* Start the clip with the seats visible, and empty if you can. Calibration uses the first 150 frames; chairs hidden behind people at that point cannot be found.
+* 720p–1080p at 15–30 fps is plenty. Processing runs at roughly real-time speed on a modern CPU.
+* Ask everyone in the frame for permission before recording.
+
+Known limitation (from the report): the system reasons in 2D, so a person standing still directly in front of a chair can look seated. The posture check reduces this but does not remove it.
+
+---
+
+## Configuration
+
+All settings live in `backend/app/config.py` and can be set through environment variables. The most useful:
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `USE_SQLITE` / `SQLITE_PATH` | `true` / `workspace_monitor.db` | Database choice; set `USE_SQLITE=false` and `POSTGRES_*` for PostgreSQL |
+| `CV_PIPELINE` | `report` | `report` or `legacy` |
+| `YOLO_MODEL_PATH`, `POSE_MODEL_PATH` | `yolov8n.pt`, `yolov8n-pose.pt` | Weights for calibration and tracking |
+| `OCC_FRAMES`, `CLEAR_FRAMES`, `VELOCITY_GATE_PX`, `HIP_WEIGHT`, `CROSS_EXPAND` | `15`, `10`, `32`, `0.7`, `0.3` | Tracking parameters from the report |
+| `DEMO_MODE` | `false` | Simulate seeded cameras and include demo data by default |
+| `SEED_DEMO` | `false` | (container) seed the example building on first start |
+| `SHOW_DEMO_LOGIN` | `false` | Sign-in page offers the admin account; for public showcases only |
+| `SAMPLE_VIDEO_PATH` | – | Video visitors can analyse with one click |
+| `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `SECRET_KEY` | – | Change these for any shared deployment |
+| `FRONTEND_DIST` | – | Serve the built web app from the API |
+
+---
+
+## API
+
+Interactive docs at `/docs`. Main endpoints:
+
+| Method | Path | Purpose |
+|---|---|---|
+| `POST` | `/api/v1/occupancy/camera/{id}/upload-video` | Upload a video and start an analysis session |
+| `POST` | `/api/v1/occupancy/camera/{id}/sample` · `/stop` | Run the bundled sample · stop the current run |
+| `GET` | `/api/v1/occupancy/camera/{id}/state` · `/stream` · `/snapshot` | Pipeline state · annotated MJPEG · reference still |
+| `GET` | `/api/v1/occupancy/sessions` · `/sessions/{id}` | Analysis sessions and their summaries |
+| `WS` | `/api/v1/occupancy/ws` | `state_sync`, `init_progress`, `seat_layout`, `processing_update`, `seat_transition`, `session_summary` |
+| `GET` | `/api/v1/analytics/comprehensive/{building}` | Time-weighted KPIs, timeline, hourly, heatmap, seats, teams, capacity |
+| `GET` | `/api/v1/analytics/seats/{seat}/history` | Seat intervals, stats and recorded state changes |
+| `GET` | `/api/v1/analytics/activity/{building}` · `/insights/{building}` | Recent seat changes · health, insights and rule-based recommendations |
+| `GET` | `/api/v1/workspace/context` · `/workspace/map/{building}` | Buildings, cameras, teams · floors, zones and seats for the explorer |
+| `POST` | `/api/v1/recommendations/scan` · `/{id}/approve` · `/{id}/reject` | Seat-allocation engine |
+| `POST` | `/api/v1/seats/allocations` | Assign a seat to a team |
+
+---
+
+## Project structure
+
+```
+backend/
+  app/
+    analytics/      intervals.py (time maths), session_summary.py, forecaster.py
+    api/v1/         occupancy, analytics, workspace, recommendations, seats, startups, buildings, auth
+    cv/             processor.py (calibration + tracking), capture.py (per-camera runtime)
+    models/         SQLAlchemy models incl. analysis_session
+    services/       seat_history.py, insights.py, recommendations.py, bootstrap.py
+    db_migrate.py   applies Alembic migrations on startup
+  alembic/versions/ 0001 baseline, 0002 sessions and event provenance
+  scripts/seed_data.py
+  tests/unit/
+frontend/src/
+  components/       shell (rail, ambient field, cursor), data (seat map, charts), ui, motion, feedback
+  features/         analysis console + summary, seat drawer, activity feed
+  lib/              live WebSocket store, workspace context, formatting
+  pages/            Live, Analytics, Recommendations, Explorer, Insights, Session, Login
 ```
 
----
+## Tests
 
-## 📅 Development Phases
+```bash
+cd backend && python -m pytest -q
+```
 
-| Phase | Focus | Status |
-|-------|-------|--------|
-| **Phase 1** | Architecture & Project Setup | ✅ Complete |
-| **Phase 2** | Database Schema & Migrations | 🔲 Planned |
-| **Phase 3** | Core Backend API (CRUD) | 🔲 Planned |
-| **Phase 4** | Authentication & Authorization | 🔲 Planned |
-| **Phase 5** | Computer Vision Integration | 🔲 Planned |
-| **Phase 6** | Frontend Dashboard & Charts | 🔲 Planned |
-| **Phase 7** | Analytics & Heatmaps | 🔲 Planned |
-| **Phase 8** | Recommendations Engine | 🔲 Planned |
-| **Phase 9** | Testing, CI/CD & Deployment | 🔲 Planned |
+## Credits
 
----
+* [Ultralytics YOLO](https://github.com/ultralytics/ultralytics) for detection and pose.
+* Sample footage used in development: `classroom.mp4` from [intel-iot-devkit/sample-videos](https://github.com/intel-iot-devkit/sample-videos), CC BY 4.0.
 
-## 📖 API Documentation
+## License
 
-Once the backend is running, interactive API documentation is available at:
-
-- **Swagger UI** → [http://localhost:8000/docs](http://localhost:8000/docs)
-- **ReDoc** → [http://localhost:8000/redoc](http://localhost:8000/redoc)
-
-### Key Endpoints (Preview)
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `GET` | `/api/v1/zones` | List all zones |
-| `POST` | `/api/v1/zones` | Create a new zone |
-| `GET` | `/api/v1/zones/{id}` | Get zone details |
-| `GET` | `/api/v1/occupancy/current` | Current occupancy snapshot |
-| `GET` | `/api/v1/occupancy/history` | Historical occupancy data |
-| `GET` | `/api/v1/analytics/summary` | Analytics summary |
-| `GET` | `/api/v1/analytics/heatmap` | Heatmap data |
-| `POST` | `/api/v1/auth/login` | User login |
-| `GET` | `/api/v1/auth/me` | Current user profile |
-| `GET` | `/health` | Health check |
-
----
-
-## 🤝 Contributing
-
-Contributions are welcome! Please follow these steps:
-
-1. **Fork** the repository
-2. **Create** a feature branch (`git checkout -b feature/amazing-feature`)
-3. **Commit** your changes (`git commit -m 'feat: add amazing feature'`)
-4. **Push** to the branch (`git push origin feature/amazing-feature`)
-5. **Open** a Pull Request
-
-### Guidelines
-
-- Follow [Conventional Commits](https://www.conventionalcommits.org/) for commit messages
-- Write tests for new features and bug fixes
-- Update documentation when changing public APIs
-- Ensure all CI checks pass before requesting review
-
----
-
-## 📄 License
-
-This project is licensed under the **MIT License** — see the [LICENSE](LICENSE) file for details.
-
----
-
-<p align="center">
-  Built with ❤️ for smarter workspaces
-</p>
+MIT

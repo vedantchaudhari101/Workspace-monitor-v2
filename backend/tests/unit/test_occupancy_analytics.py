@@ -91,6 +91,17 @@ def test_hour_of_day_split_respects_timezone():
     assert acc[5] == (3600.0, 3600.0)
 
 
+def test_max_concurrent_is_exact():
+    from app.analytics.intervals import max_concurrent
+
+    seats = {
+        "a": [Interval(0, 10, "OCCUPIED"), Interval(10, 20, "VACANT")],
+        "b": [Interval(5, 15, "OCCUPIED")],
+        "c": [Interval(10, 20, "OCCUPIED")],
+    }
+    assert max_concurrent(seats) == (2, 5)
+
+
 def test_peak_window_finds_longest_run_near_peak():
     tl = [{"t": i * 10.0, "occupied": v, "observed": 4.0} for i, v in enumerate([0, 1, 4, 4, 3.5, 1, 4])]
     w = peak_window(tl, 10.0)

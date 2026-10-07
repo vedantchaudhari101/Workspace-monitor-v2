@@ -1,0 +1,134 @@
+/* ── Seat map ─────────────────────────────────────────────────────────── */
+
+.seat-map {
+  width: 100%;
+  height: auto;
+  max-height: 520px;
+  overflow: visible;
+}
+
+.seat-map-frame {
+  fill: var(--bg-sunken);
+  stroke: var(--line);
+}
+
+.seat { cursor: default; outline: none; }
+.seat[role="button"] { cursor: pointer; }
+
+.seat-body {
+  transition: fill var(--dur) var(--ease-out), stroke var(--dur) var(--ease-out), opacity var(--dur);
+}
+
+.seat-available .seat-body { fill: var(--available-dim); stroke: var(--available); }
+.seat-occupied .seat-body { fill: var(--occupied-dim); stroke: var(--occupied); }
+.seat-unknown .seat-body { fill: rgba(91, 99, 108, 0.12); stroke: var(--unknown); stroke-dasharray: 6 5; }
+
+.seat-label { fill: var(--text); font-family: var(--font-mono); pointer-events: none; }
+.seat-marker { fill: var(--occupied); }
+
+.seat:hover .seat-body,
+.seat:focus-visible .seat-body { filter: brightness(1.35); }
+.seat:focus-visible .seat-body { stroke: var(--scan); }
+.seat-selected .seat-body { stroke: var(--scan); stroke-width: 3; }
+.seat-dim { opacity: 0.18; }
+
+.seat-pulse {
+  fill: none;
+  stroke: var(--scan);
+  stroke-width: 3;
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: seat-pulse 1.4s var(--ease-out) forwards;
+}
+
+@keyframes seat-pulse {
+  from { opacity: 0.9; transform: scale(1); }
+  to { opacity: 0; transform: scale(1.35); }
+}
+
+/* ── Seat grid ────────────────────────────────────────────────────────── */
+
+.seat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+  gap: var(--s-2);
+}
+
+.tile {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  align-items: stretch;
+  text-align: left;
+  padding: var(--s-2) var(--s-3);
+  border-radius: var(--r-md);
+  border: 1px solid var(--line);
+  background: var(--surface);
+  transition: border-color var(--dur-fast), background var(--dur-fast), transform var(--dur-fast) var(--ease-out);
+  overflow: hidden;
+}
+
+.tile:hover { border-color: var(--line-strong); background: var(--surface-2); transform: translateY(-1px); }
+.tile-selected { border-color: var(--scan); }
+.tile-occupied { border-left: 2px solid var(--occupied); }
+.tile-available { border-left: 2px solid var(--available); }
+.tile-unknown { border-left: 2px dashed var(--unknown); }
+
+.tile-head { display: flex; justify-content: space-between; align-items: center; }
+.tile-label { font-family: var(--font-mono); font-size: var(--fs-sm); }
+.tile-meta, .tile-util { font-size: var(--fs-xs); color: var(--text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.tile-pulse {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  box-shadow: inset 0 0 0 1px var(--scan);
+  background: var(--scan-faint);
+  animation: tile-pulse 1.6s var(--ease-out) forwards;
+  pointer-events: none;
+}
+
+@keyframes tile-pulse {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+/* ── Legend ───────────────────────────────────────────────────────────── */
+
+.legend { display: flex; gap: var(--s-4); flex-wrap: wrap; font-size: var(--fs-xs); color: var(--text-2); }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+
+/* ── Heatmap ──────────────────────────────────────────────────────────── */
+
+.heatmap { overflow-x: auto; }
+.heatmap table { border-collapse: separate; border-spacing: 2px; font-size: var(--fs-xs); }
+.heatmap th { color: var(--text-3); font-weight: 400; padding: 0 4px; text-align: right; white-space: nowrap; }
+.heatmap thead th { text-align: center; font-family: var(--font-mono); }
+.heatmap td { width: 22px; min-width: 22px; height: 18px; border-radius: 3px; }
+.heatmap td.empty { background: repeating-linear-gradient(135deg, transparent 0 3px, var(--surface-2) 3px 4px); }
+
+/* ── Timeline bar (seat intervals) ─────────────────────────────────────── */
+
+.ivbar { display: flex; height: 14px; border-radius: 3px; overflow: hidden; background: var(--surface-2); }
+.ivbar span { height: 100%; }
+.ivbar .iv-OCCUPIED { background: var(--occupied); }
+.ivbar .iv-VACANT { background: color-mix(in srgb, var(--available) 55%, transparent); }
+.ivbar .iv-UNKNOWN { background: transparent; }
+
+/* ── Chart tooltip ────────────────────────────────────────────────────── */
+
+.chart-tip {
+  background: var(--surface-3);
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-size: var(--fs-xs);
+  color: var(--text);
+}
+
+.chart-tip .muted { color: var(--text-2); }
+
+/* ── Gauge ────────────────────────────────────────────────────────────── */
+
+.gauge-value { font-size: var(--fs-display); font-weight: 500; letter-spacing: -0.04em; line-height: 1; }

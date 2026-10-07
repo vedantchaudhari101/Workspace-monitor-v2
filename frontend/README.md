@@ -1,16 +1,19 @@
-# React + Vite
+# Workspace Monitor — web app
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+React 19 + Vite. See the root README for setup.
 
-Currently, two official plugins are available:
+```bash
+npm install
+npm run dev      # http://localhost:5173, proxies /api and the WebSocket to :8000
+npm run build    # production build in dist/ (served by the API when FRONTEND_DIST is set)
+npm run lint
+```
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+Structure:
 
-## React Compiler
-
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the Oxlint configuration
-
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and Oxlint's TypeScript related rules in your project.
+* `src/lib/live/store.js` — one shared WebSocket; components subscribe to the seat or camera they render.
+* `src/lib/workspace.jsx` — current building, camera, teams and the demo-data switch.
+* `src/components/shell` — navigation rail, ambient floor-grid background, pointer companion.
+* `src/components/data` — seat map (camera-pixel coordinates), seat grid, charts, heatmap.
+* `src/features/analysis` — upload console with real pipeline stages, session summary.
+* `src/styles/tokens.css` — colours, type and spacing. Red/green are reserved for occupancy.

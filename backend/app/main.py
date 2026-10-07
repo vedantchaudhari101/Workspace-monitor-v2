@@ -16,6 +16,7 @@ Usage (tests)::
 
 from __future__ import annotations
 
+import os
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 
@@ -136,9 +137,20 @@ def create_app() -> FastAPI:
         """Non-secret runtime flags the frontend needs before login."""
         return {
             "demo_mode": settings.DEMO_MODE,
+            # Only published when explicitly enabled for a public showcase.
+            "demo_login": (
+                {"email": settings.ADMIN_EMAIL, "password": settings.ADMIN_PASSWORD}
+                if settings.SHOW_DEMO_LOGIN
+                else None
+            ),
             "pipeline": settings.CV_PIPELINE,
             "max_upload_mb": settings.MAX_UPLOAD_MB,
             "version": settings.APP_VERSION,
+            "sample_video": {
+                "available": bool(settings.SAMPLE_VIDEO_PATH) and os.path.isfile(settings.SAMPLE_VIDEO_PATH),
+                "name": os.path.basename(settings.SAMPLE_VIDEO_PATH) if settings.SAMPLE_VIDEO_PATH else None,
+                "credit": settings.SAMPLE_VIDEO_CREDIT or None,
+            },
         }
 
     _mount_frontend(application, settings.FRONTEND_DIST)

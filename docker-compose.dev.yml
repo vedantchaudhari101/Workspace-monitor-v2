@@ -1,37 +1,16 @@
 # =============================================================================
-# Workspace Monitor — Docker Compose (Development Overrides)
-# =============================================================================
-# Usage: docker compose -f docker-compose.yml -f docker-compose.dev.yml up
-# Adds hot-reload, exposed dev ports, and debug logging.
+# Development: run the API with reload and the Vite dev server on the host.
+#   docker compose -f docker-compose.dev.yml up db     # just PostgreSQL
+#   cd backend && uvicorn app.main:app --reload         # API on :8000
+#   cd frontend && npm run dev                          # web app on :5173
 # =============================================================================
 
 services:
-  backend:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
-      target: builder
-    volumes:
-      - ./backend:/app
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
-    environment:
-      - DEBUG=true
-      - LOG_LEVEL=DEBUG
-
-  frontend:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile
-      target: builder
-    volumes:
-      - ./frontend:/app
-      - /app/node_modules
-    command: npm run dev -- --host 0.0.0.0
-    ports:
-      - "5173:5173"
-    environment:
-      - VITE_API_BASE_URL=http://localhost:8000
-
   db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: workspace_user
+      POSTGRES_PASSWORD: workspace_pass_dev
+      POSTGRES_DB: workspace_monitor
     ports:
-      - "${POSTGRES_PORT:-5432}:5432"
+      - "5432:5432"

@@ -1,5 +1,11 @@
 # 🏗️ Architecture — Workspace Monitor
 
+> **Current implementation (v2).** This document describes the original target architecture. The code
+> now runs as a single FastAPI service with the CV pipeline in-process, SQLite by default (PostgreSQL
+> supported), WebSocket live updates and the web app served from the same container. See the root
+> README for the up-to-date architecture, pipeline and API, and DEPLOYMENT.md for hosting.
+
+
 > Detailed architecture documentation for the AI-Powered Smart Workspace Occupancy Monitoring Platform.
 
 ---

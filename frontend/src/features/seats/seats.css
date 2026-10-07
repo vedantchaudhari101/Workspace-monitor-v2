@@ -1,0 +1,53 @@
+.drawer-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--s-3) var(--s-4);
+  border-bottom: 1px solid var(--line);
+}
+
+.drawer-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-5);
+  padding: var(--s-5) var(--s-4) var(--s-7);
+  color: var(--text);
+  font-family: var(--font-sans);
+}
+
+.drawer-title {
+  font-size: var(--fs-xl);
+  font-weight: 500;
+  letter-spacing: -0.02em;
+}
+
+.seat-stats {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  border-top: 1px solid var(--line);
+}
+
+.seat-stats div {
+  padding: var(--s-3) 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.seat-stats dt { font-size: var(--fs-xs); color: var(--text-2); }
+.seat-stats dd { font-size: var(--fs-md); font-variant-numeric: tabular-nums; }
+
+.seat-log {
+  list-style: none;
+  font-size: var(--fs-sm);
+}
+
+.seat-log li {
+  display: grid;
+  grid-template-columns: 108px 96px 1fr;
+  gap: var(--s-2);
+  padding: 6px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.log-OCCUPIED { color: var(--occupied); }
+.log-VACANT { color: var(--available); }
+.log-UNKNOWN { color: var(--text-3); }

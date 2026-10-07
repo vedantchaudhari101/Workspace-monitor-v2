@@ -1,0 +1,204 @@
+.shell {
+  min-height: 100vh;
+}
+
+.ambient-field {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  mask-image: radial-gradient(120% 90% at 62% 70%, #000 40%, transparent 100%);
+}
+
+.cursor-ring {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 1px solid color-mix(in srgb, var(--scan) 55%, transparent);
+  pointer-events: none;
+  z-index: 100;
+  opacity: 0;
+  transition: opacity 200ms;
+  will-change: transform;
+}
+
+.cursor-glow {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 440px;
+  height: 440px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(127, 219, 240, 0.055) 0%, rgba(127, 219, 240, 0) 65%);
+  pointer-events: none;
+  z-index: 0;
+  opacity: 0;
+  transition: opacity 300ms;
+  will-change: transform;
+}
+
+.skip-link {
+  position: fixed;
+  left: var(--s-4);
+  top: -60px;
+  z-index: 200;
+  padding: var(--s-2) var(--s-4);
+  background: var(--text);
+  color: var(--text-inverse);
+  border-radius: var(--r-md);
+}
+
+.skip-link:focus { top: var(--s-4); }
+
+.rail {
+  position: fixed;
+  inset: 0 auto 0 0;
+  width: var(--rail-w);
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  padding: var(--s-5) var(--s-4);
+  border-right: 1px solid var(--line);
+  background: color-mix(in srgb, var(--bg) 82%, transparent);
+  backdrop-filter: blur(10px);
+}
+
+.rail-brand {
+  display: flex;
+  gap: var(--s-3);
+  align-items: flex-start;
+  padding: 0 var(--s-2) var(--s-5);
+}
+
+.rail-name {
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  line-height: 1.2;
+}
+
+.rail-tag {
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+  margin-top: 2px;
+  line-height: 1.35;
+}
+
+.rail-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.rail-link {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  height: 40px;
+  padding: 0 var(--s-3);
+  border-radius: var(--r-md);
+  color: var(--text-2);
+  font-size: var(--fs-sm);
+  transition: color var(--dur-fast);
+}
+
+.rail-link > * { position: relative; z-index: 1; }
+.rail-link:hover { color: var(--text); }
+.rail-link.active { color: var(--text); }
+
+.rail-active {
+  position: absolute !important;
+  inset: 0;
+  z-index: 0 !important;
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+  box-shadow: inset 2px 0 0 var(--scan);
+}
+
+.rail-foot {
+  margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-4);
+  padding: var(--s-4) var(--s-2) 0;
+  border-top: 1px solid var(--line);
+}
+
+.rail-status {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  font-size: var(--fs-sm);
+  color: var(--text-2);
+}
+
+.rail-user {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--s-1);
+  color: var(--text-2);
+}
+
+.rail-user .btn { margin-left: -12px; }
+
+.main {
+  position: relative;
+  z-index: 1;
+  margin-left: var(--rail-w);
+  min-height: 100vh;
+  outline: none;
+}
+
+.topbar,
+.tabbar {
+  display: none;
+}
+
+@media (max-width: 900px) {
+  .rail { display: none; }
+  .main { margin-left: 0; padding-bottom: 72px; }
+
+  .topbar {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    height: 56px;
+    padding: 0 var(--s-4);
+    border-bottom: 1px solid var(--line);
+    background: color-mix(in srgb, var(--bg) 85%, transparent);
+    backdrop-filter: blur(10px);
+  }
+
+  .tabbar {
+    position: fixed;
+    inset: auto 0 0 0;
+    z-index: 10;
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    height: 64px;
+    padding-bottom: env(safe-area-inset-bottom);
+    border-top: 1px solid var(--line);
+    background: color-mix(in srgb, var(--bg) 92%, transparent);
+    backdrop-filter: blur(10px);
+  }
+
+  .tab-link {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    font-size: 11px;
+    color: var(--text-3);
+  }
+
+  .tab-link.active { color: var(--text); }
+  .tab-link.active svg { color: var(--scan); }
+}

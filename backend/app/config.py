@@ -100,10 +100,15 @@ class Settings(BaseSettings):
         default="", description="Path to a built frontend to serve from FastAPI (single-container deploys)"
     )
     RUN_MIGRATIONS: bool = Field(default=True, description="Apply database migrations on startup")
+    SHOW_DEMO_LOGIN: bool = Field(
+        default=False, description="Offer a one-click fill of the bootstrap admin account on the sign-in page (public showcases)"
+    )
+    SAMPLE_VIDEO_PATH: str = Field(default="", description="Optional bundled video visitors can analyse with one click")
+    SAMPLE_VIDEO_CREDIT: str = Field(default="", description="Attribution shown next to the sample video")
 
     # ── Application ─────────────────────────────────────────────────────
     APP_NAME: str = Field(default="WorkspaceMonitor", description="Application display name")
-    APP_VERSION: str = Field(default="1.0.0", description="Semantic version")
+    APP_VERSION: str = Field(default="2.0.0", description="Semantic version")
     DEBUG: bool = Field(default=False, description="Enable debug mode")
     LOG_LEVEL: str = Field(default="INFO", description="Root log level")
     CORS_ORIGINS: List[str] = Field(

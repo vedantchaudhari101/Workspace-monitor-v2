@@ -134,6 +134,23 @@ def bucket_timeline(
     return out
 
 
+def max_concurrent(seat_intervals: Dict[str, List[Interval]]) -> Tuple[int, Optional[float]]:
+    """Exact peak number of simultaneously occupied seats, and when it first happened."""
+    edges: List[Tuple[float, int]] = []
+    for intervals in seat_intervals.values():
+        for iv in intervals:
+            if iv.status == OCCUPIED and iv.duration > 0:
+                edges.append((iv.start, 1))
+                edges.append((iv.end, -1))
+    edges.sort(key=lambda e: (e[0], e[1]))  # ends before starts at the same instant
+    best, at, cur = 0, None, 0
+    for t, d in edges:
+        cur += d
+        if cur > best:
+            best, at = cur, t
+    return best, at
+
+
 def accumulate_by_key(
     intervals: Iterable[Interval],
     key_and_boundary: Callable[[float], Tuple[int, float]],

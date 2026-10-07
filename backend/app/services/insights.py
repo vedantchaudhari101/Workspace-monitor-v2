@@ -146,7 +146,7 @@ def build_insights(analytics: Dict[str, Any]) -> Dict[str, Any]:
         })
     measured.append({
         "id": "unused-capacity", "title": "Unused capacity",
-        "detail": f"{100 - avg:.0f}% of observed seat-time was vacant ({kpi['observed_seat_hours'] - kpi['occupied_seat_hours']:.1f} of {kpi['observed_seat_hours']:.1f} seat-hours).",
+        "detail": f"{100 - avg:.0f}% of observed seat-time was vacant ({_fmt_minutes(observed_s - kpi['occupied_seat_hours'] * 3600)} of {_fmt_minutes(observed_s)} seat-time).",
     })
 
     # ── Rule-based recommendations ─────────────────────────────────────────

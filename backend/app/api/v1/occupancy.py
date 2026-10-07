@@ -248,6 +248,42 @@ async def upload_and_process_video(
     }
 
 
+@router.post("/camera/{camera_id}/sample", summary="Analyse the bundled sample video")
+async def analyse_sample(camera_id: UUID, db: DbSession, _user: CurrentUser):
+    """Start a normal analysis session on the sample video configured by SAMPLE_VIDEO_PATH."""
+    settings = get_settings()
+    sample = settings.SAMPLE_VIDEO_PATH
+    if not sample or not os.path.isfile(sample):
+        raise HTTPException(status_code=404, detail="No sample video is configured on this server.")
+    camera = await db.get(Camera, camera_id)
+    if not camera:
+        raise NotFoundError("Camera", str(camera_id))
+
+    os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
+    name = os.path.basename(sample)
+    file_path = os.path.join(settings.UPLOAD_DIR, f"{camera_id}_{uuid_module.uuid4().hex}_{name}")
+    await asyncio.get_running_loop().run_in_executor(None, shutil.copyfile, sample, file_path)
+
+    session_row = AnalysisSession(
+        camera_id=camera.id, source_filename=name, mode="video",
+        pipeline=settings.CV_PIPELINE, status=SessionStatus.UPLOADED.value,
+    )
+    db.add(session_row)
+    config = dict(camera.config or {})
+    config.update({"source_type": "video", "video_path": file_path})
+    camera.config = config
+    camera.stream_url = file_path
+    await db.commit()
+
+    from app.cv.capture import camera_manager
+
+    asyncio.create_task(camera_manager.start_camera(
+        camera_id=camera.id, mode="video", video_path=file_path,
+        session_db_id=session_row.id, source_filename=name,
+    ))
+    return {"status": "processing", "camera_id": str(camera_id), "session_id": str(session_row.id), "file_name": name}
+
+
 @router.post("/camera/{camera_id}/stop", summary="Stop the running analysis for a camera")
 async def stop_camera_analysis(camera_id: UUID, _user: CurrentUser):
     """Stop processing; the session is finalised with the data observed so far."""
@@ -444,6 +480,22 @@ async def camera_frame(camera_id: UUID):
     if consumer is None or not consumer.latest_frame:
         raise HTTPException(status_code=404, detail="No frame available.")
     return Response(content=consumer.latest_frame, media_type="image/jpeg", headers={"Cache-Control": "no-store"})
+
+
+def snapshot_path(camera_id) -> str:
+    return os.path.join(get_settings().UPLOAD_DIR, "snapshots", f"{camera_id}.jpg")
+
+
+@router.get("/camera/{camera_id}/snapshot", summary="Reference still of the camera view")
+async def camera_snapshot(camera_id: UUID):
+    """Unannotated frame saved at calibration; seat maps draw on top of it.
+    Like the MJPEG stream this is served without auth so <img> tags can load it."""
+    from fastapi.responses import FileResponse
+
+    path = snapshot_path(camera_id)
+    if not os.path.isfile(path):
+        raise HTTPException(status_code=404, detail="No snapshot for this camera yet.")
+    return FileResponse(path, media_type="image/jpeg", headers={"Cache-Control": "no-cache"})
 
 
 # ─── Camera Seat State (kept for compatibility) ────────────────────────────────
