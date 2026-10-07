@@ -27,9 +27,11 @@ config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-# Override the sqlalchemy.url from settings (sync driver for Alembic).
+# Override the sqlalchemy.url from settings (sync driver for Alembic) unless
+# the caller (e.g. the startup migration runner) already supplied one.
 settings = get_settings()
-config.set_main_option("sqlalchemy.url", settings.database_url_sync)
+if not config.attributes.get("url_from_caller"):
+    config.set_main_option("sqlalchemy.url", settings.database_url_sync)
 
 # Set target metadata for autogenerate support.
 target_metadata = Base.metadata
@@ -79,6 +81,9 @@ def run_migrations_online() -> None:
         context.configure(
             connection=connection,
             target_metadata=target_metadata,
+            # SQLite cannot ALTER columns/constraints in place; batch mode
+            # recreates the table transparently.
+            render_as_batch=connection.dialect.name == "sqlite",
         )
 
         with context.begin_transaction():

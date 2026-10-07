@@ -11,7 +11,7 @@ import enum
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, Float, ForeignKey, Index, JSON
+from sqlalchemy import DateTime, Float, ForeignKey, Index, JSON, String
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -27,6 +27,22 @@ class OccupancyStatus(str, enum.Enum):
     OCCUPIED = "OCCUPIED"
     VACANT = "VACANT"
     UNKNOWN = "UNKNOWN"
+
+
+class EventSource(str, enum.Enum):
+    """Where an occupancy event came from.
+
+    Only ``VIDEO`` events are produced by the computer-vision pipeline.
+    Everything else is demo or legacy data and is labelled as such in the UI.
+    """
+
+    VIDEO = "VIDEO"
+    MOCK = "MOCK"
+    SEED = "SEED"
+    LEGACY = "LEGACY"
+
+
+DEMO_SOURCES = (EventSource.MOCK.value, EventSource.SEED.value, EventSource.LEGACY.value)
 
 
 class OccupancyEvent(UUIDMixin, TimestampMixin, Base):
@@ -81,6 +97,16 @@ class OccupancyEvent(UUIDMixin, TimestampMixin, Base):
         DateTime(timezone=True), nullable=False
     )
     person_bbox: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    session_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("analysis_sessions.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    source: Mapped[str] = mapped_column(
+        String(16), default=EventSource.VIDEO.value, nullable=False, index=True
+    )
+    video_ts: Mapped[float | None] = mapped_column(Float, nullable=True)
 
     # Relationships
     seat: Mapped[Seat] = relationship(

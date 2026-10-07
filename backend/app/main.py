@@ -56,13 +56,28 @@ def create_app() -> FastAPI:
                 "debug": settings.DEBUG,
             },
         )
-        # Start all active camera loops
+        # Schema first, then the minimum workspace structure, then cameras.
+        if settings.RUN_MIGRATIONS:
+            import asyncio
+
+            from app.db_migrate import run_migrations
+
+            await asyncio.get_running_loop().run_in_executor(None, run_migrations)
+        try:
+            from app.database import async_session_factory
+            from app.services.bootstrap import bootstrap
+
+            async with async_session_factory() as session:
+                await bootstrap(session)
+        except Exception as e:
+            logger.error(f"Bootstrap failed: {e}")
+
         from app.cv.capture import camera_manager
         try:
             await camera_manager.start_all()
         except Exception as e:
             logger.error(f"Failed to start camera capture loops: {e}")
-            
+
         yield
         
         logger.info("Application shutting down")
@@ -116,7 +131,47 @@ def create_app() -> FastAPI:
             "timestamp": datetime.now(timezone.utc).isoformat(),
         }
 
+    @application.get("/api/v1/config", tags=["System"])
+    async def public_config() -> dict:
+        """Non-secret runtime flags the frontend needs before login."""
+        return {
+            "demo_mode": settings.DEMO_MODE,
+            "pipeline": settings.CV_PIPELINE,
+            "max_upload_mb": settings.MAX_UPLOAD_MB,
+            "version": settings.APP_VERSION,
+        }
+
+    _mount_frontend(application, settings.FRONTEND_DIST)
     return application
+
+
+def _mount_frontend(application: FastAPI, dist: str) -> None:
+    """Serve a built SPA from the API process (single-container deployments)."""
+    import os
+
+    if not dist or not os.path.isdir(dist):
+        return
+    from fastapi.responses import FileResponse
+    from fastapi.staticfiles import StaticFiles
+
+    assets = os.path.join(dist, "assets")
+    if os.path.isdir(assets):
+        application.mount("/assets", StaticFiles(directory=assets), name="assets")
+    index = os.path.join(dist, "index.html")
+
+    @application.get("/{full_path:path}", include_in_schema=False)
+    async def spa(full_path: str):
+        from fastapi import HTTPException
+
+        if full_path.startswith("api/"):
+            raise HTTPException(status_code=404, detail="Not Found")
+        root = os.path.abspath(dist)
+        candidate = os.path.abspath(os.path.join(root, full_path))
+        if full_path and candidate.startswith(root + os.sep) and os.path.isfile(candidate):
+            return FileResponse(candidate)
+        return FileResponse(index)
+
+    logger.info(f"Serving frontend from {dist}")
 
 
 # ── Module-Level Application Instance ───────────────────────────────────────

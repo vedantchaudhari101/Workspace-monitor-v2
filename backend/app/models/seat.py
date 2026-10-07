@@ -49,6 +49,10 @@ class Seat(UUIDMixin, TimestampMixin, Base):
     width: Mapped[float | None] = mapped_column(Float, nullable=True)
     height: Mapped[float | None] = mapped_column(Float, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    # DETECTED = created by the CV calibration engine, SEED = demo data,
+    # MANUAL = created through the API.
+    source: Mapped[str] = mapped_column(String(16), default="MANUAL", nullable=False)
+    confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
 
     # Relationships
     zone: Mapped[Zone] = relationship(

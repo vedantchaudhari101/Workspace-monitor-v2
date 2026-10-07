@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter
 
-from app.api.v1 import auth, building, occupancy, recommendations, startup, seat, analytics
+from app.api.v1 import auth, building, occupancy, recommendations, startup, seat, analytics, workspace
 
 router = APIRouter()
 
@@ -31,3 +31,4 @@ router.include_router(
     recommendations.router, prefix="/recommendations", tags=["Recommendations"]
 )
 router.include_router(analytics.router, prefix="/analytics", tags=["Analytics"])
+router.include_router(workspace.router, prefix="/workspace", tags=["Workspace"])

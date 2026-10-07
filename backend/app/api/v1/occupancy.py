@@ -10,6 +10,7 @@ from datetime import datetime
 from uuid import UUID
 
 from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect, UploadFile, File, HTTPException
+from sqlalchemy import select
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
@@ -18,6 +19,11 @@ from app.schemas.common import PaginatedResponse
 from app.schemas.occupancy import LiveOccupancyResponse, OccupancyEventResponse
 from app.services.occupancy_service import OccupancyService
 from app.api.ws_manager import manager
+from app.config import get_settings
+from app.models.analysis_session import AnalysisSession, SessionStatus
+from app.models.camera import Camera
+from app.api.exceptions import NotFoundError
+from app.utils.timefmt import iso_utc
 
 router = APIRouter()
 
@@ -69,7 +75,7 @@ async def list_events(
 # ─── Camera Source Control ─────────────────────────────────────────────────────
 
 class CameraSourceUpdate(BaseModel):
-    source_type: str  # "video" | "mock"
+    source_type: str  # "video" | "mock" | "idle"
     video_path: str | None = None
 
 
@@ -83,36 +89,50 @@ async def update_camera_source(
     db: DbSession,
     _user: CurrentUser,
 ):
-    """Update camera source stream or mode (video, mock)."""
-    from app.models.camera import Camera
-    from app.api.exceptions import NotFoundError
-
+    """Switch a camera between idle, demo simulation (DEMO_MODE only) and a server-side video."""
     camera = await db.get(Camera, camera_id)
     if not camera:
         raise NotFoundError("Camera", str(camera_id))
+    if payload.source_type == "mock" and not get_settings().DEMO_MODE:
+        raise HTTPException(status_code=400, detail="Simulated (mock) mode is only available when DEMO_MODE is enabled.")
+    if payload.source_type not in ("video", "mock", "idle"):
+        raise HTTPException(status_code=400, detail="source_type must be 'video', 'mock' or 'idle'.")
 
-    # Merge into existing config dict (don't overwrite codec/bitrate settings)
     config = dict(camera.config or {})
     config["source_type"] = payload.source_type
     if payload.video_path:
         config["video_path"] = payload.video_path
         camera.stream_url = payload.video_path
     camera.config = config
-
     await db.flush()
-    await db.refresh(camera)
+    await db.commit()
 
-    # Hot-swap the background running camera loop
     from app.cv.capture import camera_manager
-    try:
+
+    if payload.source_type == "idle":
+        await camera_manager.stop_camera(camera.id)
+    else:
+        session_id = None
+        if payload.source_type == "video":
+            if not payload.video_path:
+                raise HTTPException(status_code=400, detail="video_path is required for video mode.")
+            row = AnalysisSession(
+                camera_id=camera.id,
+                source_filename=os.path.basename(payload.video_path),
+                mode="video",
+                pipeline=get_settings().CV_PIPELINE,
+                status=SessionStatus.UPLOADED.value,
+            )
+            db.add(row)
+            await db.commit()
+            session_id = row.id
         await camera_manager.start_camera(
             camera_id=camera.id,
             mode=payload.source_type,
             video_path=payload.video_path,
+            session_db_id=session_id,
+            source_filename=os.path.basename(payload.video_path) if payload.video_path else None,
         )
-    except Exception as e:
-        import logging
-        logging.getLogger(__name__).error(f"Failed to hot-swap camera stream: {e}")
 
     return {
         "camera_id": str(camera.id),
@@ -125,6 +145,10 @@ async def update_camera_source(
 
 # ─── Video Upload ──────────────────────────────────────────────────────────────
 
+ALLOWED_VIDEO_EXTENSIONS = {".mp4", ".mov", ".avi", ".mkv", ".webm", ".m4v"}
+CHUNK = 1024 * 1024
+
+
 @router.post(
     "/camera/{camera_id}/upload-video",
     summary="Upload and process video for occupancy analysis",
@@ -135,56 +159,203 @@ async def upload_and_process_video(
     _user: CurrentUser,
     file: UploadFile = File(...),
 ):
-    """Upload a video file, save it locally, and trigger YOLO occupancy processing."""
-    upload_dir = "uploads"
-    os.makedirs(upload_dir, exist_ok=True)
-
-    # Use camera_id and uuid to guarantee unique paths, preventing Windows file lock sharing violations
-    safe_filename = file.filename.replace("/", "_").replace("\\", "_")
-    unique_id = uuid_module.uuid4().hex
-    file_path = os.path.join(upload_dir, f"{camera_id}_{unique_id}_{safe_filename}")
-
-    # Write file in thread pool to avoid blocking event loop
-    loop = asyncio.get_event_loop()
-    file_bytes = await file.read()  # read fully into memory
-
-    def _write_file():
-        with open(file_path, "wb") as buf:
-            buf.write(file_bytes)
-
-    await loop.run_in_executor(None, _write_file)
-
-    from app.models.camera import Camera
-    from app.api.exceptions import NotFoundError
-
+    """Stream a video to disk, validate it, open an analysis session and start the pipeline."""
+    settings = get_settings()
     camera = await db.get(Camera, camera_id)
     if not camera:
         raise NotFoundError("Camera", str(camera_id))
 
-    # Merge config — preserve existing codec/bitrate keys
+    original = os.path.basename(file.filename or "video.mp4")
+    ext = os.path.splitext(original)[1].lower()
+    if ext not in ALLOWED_VIDEO_EXTENSIONS:
+        raise HTTPException(
+            status_code=415,
+            detail=f"Unsupported file type '{ext or 'none'}'. Use one of: {', '.join(sorted(ALLOWED_VIDEO_EXTENSIONS))}.",
+        )
+
+    os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
+    safe_name = "".join(ch if ch.isalnum() or ch in "._-" else "_" for ch in original)
+    file_path = os.path.join(settings.UPLOAD_DIR, f"{camera_id}_{uuid_module.uuid4().hex}_{safe_name}")
+    limit = settings.MAX_UPLOAD_MB * 1024 * 1024
+    written = 0
+    loop = asyncio.get_running_loop()
+
+    out = await loop.run_in_executor(None, open, file_path, "wb")
+    try:
+        while True:
+            chunk = await file.read(CHUNK)
+            if not chunk:
+                break
+            written += len(chunk)
+            if written > limit:
+                raise HTTPException(status_code=413, detail=f"Video is larger than the {settings.MAX_UPLOAD_MB} MB limit.")
+            await loop.run_in_executor(None, out.write, chunk)
+    except HTTPException:
+        out.close()
+        os.remove(file_path)
+        raise
+    finally:
+        if not out.closed:
+            out.close()
+
+    def _probe():
+        import cv2
+
+        cap = cv2.VideoCapture(file_path)
+        ok = cap.isOpened()
+        frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0) if ok else 0
+        cap.release()
+        return ok and frames > 0
+
+    if not await loop.run_in_executor(None, _probe):
+        os.remove(file_path)
+        raise HTTPException(status_code=422, detail="The file could not be read as a video. Try re-exporting it as H.264 MP4.")
+
+    session_row = AnalysisSession(
+        camera_id=camera.id,
+        source_filename=original,
+        mode="video",
+        pipeline=settings.CV_PIPELINE,
+        status=SessionStatus.UPLOADED.value,
+    )
+    db.add(session_row)
     config = dict(camera.config or {})
     config["source_type"] = "video"
     config["video_path"] = file_path
     camera.config = config
     camera.stream_url = file_path
-    await db.flush()
+    await db.commit()
 
-    # Start camera consumer in background — do NOT await the CV loop itself
     from app.cv.capture import camera_manager
+
     asyncio.create_task(
         camera_manager.start_camera(
             camera_id=camera.id,
             mode="video",
             video_path=file_path,
+            session_db_id=session_row.id,
+            source_filename=original,
         )
     )
 
     return {
         "status": "processing",
         "camera_id": str(camera_id),
-        "file_path": file_path,
-        "message": "Video uploaded. Chair detection and occupancy analysis started in background.",
+        "session_id": str(session_row.id),
+        "file_name": original,
+        "size_bytes": written,
+        "message": "Video uploaded. Seat calibration and occupancy analysis started.",
     }
+
+
+@router.post("/camera/{camera_id}/stop", summary="Stop the running analysis for a camera")
+async def stop_camera_analysis(camera_id: UUID, _user: CurrentUser):
+    """Stop processing; the session is finalised with the data observed so far."""
+    from app.cv.capture import camera_manager
+
+    consumer = camera_manager.consumers.get(camera_id)
+    if consumer is None or not consumer.running:
+        raise HTTPException(status_code=409, detail="Nothing is running on this camera.")
+    await camera_manager.stop_camera(camera_id)
+    return {"camera_id": str(camera_id), "status": consumer.status}
+
+
+# ─── Camera state & sessions ───────────────────────────────────────────────────
+
+def _session_brief(row: AnalysisSession) -> dict:
+    summary = row.summary or {}
+    return {
+        "id": str(row.id),
+        "camera_id": str(row.camera_id),
+        "source_filename": row.source_filename,
+        "mode": row.mode,
+        "pipeline": row.pipeline,
+        "status": row.status,
+        "created_at": iso_utc(row.created_at),
+        "started_at": iso_utc(row.started_at),
+        "completed_at": iso_utc(row.completed_at),
+        "video_duration_s": row.video_duration_s,
+        "frame_w": row.frame_w,
+        "frame_h": row.frame_h,
+        "seat_count": row.seat_count,
+        "frames_processed": row.frames_processed,
+        "frames_inferred": row.frames_inferred,
+        "avg_inference_ms": row.avg_inference_ms,
+        "calibration_s": row.calibration_s,
+        "peak_occupied": summary.get("peak_occupied"),
+        "avg_occupancy_pct": summary.get("avg_occupancy_pct"),
+        "error": row.error,
+    }
+
+
+@router.get("/camera/{camera_id}/state", summary="Current pipeline state for a camera")
+async def camera_state(camera_id: UUID, db: DbSession, _user: CurrentUser):
+    """Live state when a run is active or finished in this process; otherwise the last stored session."""
+    from app.cv.capture import camera_manager
+
+    camera = await db.get(Camera, camera_id)
+    if not camera:
+        raise NotFoundError("Camera", str(camera_id))
+    consumer = camera_manager.consumers.get(camera_id)
+    if consumer is not None:
+        return {"live": True, **consumer.snapshot()}
+
+    last = (
+        await db.execute(
+            select(AnalysisSession)
+            .where(AnalysisSession.camera_id == camera_id)
+            .order_by(AnalysisSession.created_at.desc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    return {
+        "live": False,
+        "camera_id": str(camera_id),
+        "status": "IDLE",
+        "stage": "IDLE",
+        "demo": False,
+        "seats": [],
+        "last_session": _session_brief(last) if last else None,
+    }
+
+
+@router.get("/sessions", summary="List analysis sessions")
+async def list_sessions(
+    db: DbSession,
+    _user: CurrentUser,
+    camera_id: UUID | None = Query(default=None),
+    limit: int = Query(default=20, ge=1, le=100),
+):
+    """Most recent analysis sessions, newest first."""
+    q = select(AnalysisSession).order_by(AnalysisSession.created_at.desc()).limit(limit)
+    if camera_id:
+        q = q.where(AnalysisSession.camera_id == camera_id)
+    rows = (await db.execute(q)).scalars().all()
+    return [_session_brief(r) for r in rows]
+
+
+@router.get("/sessions/{session_id}", summary="Analysis session detail")
+async def get_session(session_id: UUID, db: DbSession, _user: CurrentUser):
+    """Session metadata plus the stored post-analysis summary."""
+    row = await db.get(AnalysisSession, session_id)
+    if not row:
+        raise NotFoundError("AnalysisSession", str(session_id))
+    return {**_session_brief(row), "summary": row.summary}
+
+
+@router.get("/camera/{camera_id}/summary", summary="Latest completed session summary for a camera")
+async def camera_summary(camera_id: UUID, db: DbSession, _user: CurrentUser):
+    row = (
+        await db.execute(
+            select(AnalysisSession)
+            .where(AnalysisSession.camera_id == camera_id, AnalysisSession.summary.isnot(None))
+            .order_by(AnalysisSession.created_at.desc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    if not row:
+        raise HTTPException(status_code=404, detail="No analysed sessions for this camera yet.")
+    return {**_session_brief(row), "summary": row.summary}
 
 
 # ─── WebSocket ─────────────────────────────────────────────────────────────────
@@ -194,34 +365,29 @@ async def occupancy_ws(websocket: WebSocket):
     """WebSocket endpoint for real-time seat occupancy streaming."""
     await manager.connect(websocket)
 
-    # Sync new client with the seat layouts of all active cameras immediately
     from app.cv.capture import camera_manager
-    for camera_id, consumer in camera_manager.consumers.items():
-        if consumer.detected_seats:
-            try:
+
+    for camera_id, consumer in list(camera_manager.consumers.items()):
+        try:
+            await websocket.send_json({"type": "state_sync", **consumer.snapshot()})
+            if consumer.detected_seats:
                 await websocket.send_json({
                     "type": "seat_layout",
                     "camera_id": str(camera_id),
-                    "seats": [
-                        {
-                            "seat_id": s.seat_id,
-                            "label": s.seat_label,
-                            "status": consumer.seat_states.get(s.seat_id, "VACANT"),
-                            "bbox": {"x1": s.x1, "y1": s.y1, "x2": s.x2, "y2": s.y2},
-                        }
-                        for s in consumer.detected_seats
-                    ],
+                    "session_id": consumer.session_id,
+                    "frame_w": consumer.frame_w,
+                    "frame_h": consumer.frame_h,
+                    "demo": consumer.mode == "mock",
+                    "seats": consumer.seat_payload(),
                 })
-            except Exception:
-                pass
+        except Exception:
+            pass
 
     try:
         while True:
-            # Keep connection alive with a ping/pong; client may send nothing
             try:
                 await asyncio.wait_for(websocket.receive_text(), timeout=30.0)
             except asyncio.TimeoutError:
-                # Send a heartbeat ping to detect dead connections
                 await websocket.send_json({"type": "ping"})
     except WebSocketDisconnect:
         manager.disconnect(websocket)
@@ -240,57 +406,47 @@ async def camera_stream(camera_id: UUID):
     Stream MJPEG annotated frames from the camera's capture loop.
     No authentication required so the browser <img> tag can render it directly.
     """
-    from app.cv.capture import camera_manager
+    from app.cv.capture import camera_manager, TERMINAL_STATUSES
 
-    if camera_id not in camera_manager.consumers:
+    consumer = camera_manager.consumers.get(camera_id)
+    if consumer is None or consumer.mode == "mock":
         raise HTTPException(status_code=404, detail="Camera stream not found or not running.")
 
-    consumer = camera_manager.consumers[camera_id]
-
     async def generate_frames():
-        import logging
-        log = logging.getLogger(__name__)
         last_frame = None
         while True:
-            # Check if this consumer is still the active one and running
-            if camera_id not in camera_manager.consumers or camera_manager.consumers[camera_id] is not consumer:
-                log.info(f"Stream: Consumer for camera {camera_id} was replaced or stopped. Ending old stream.")
+            if camera_manager.consumers.get(camera_id) is not consumer:
                 break
-
-            # Check if consumer loop finished
-            if not consumer.running and getattr(consumer, "status", None) == "COMPLETED":
-                # Send the final frame one last time and exit
-                frame_bytes = consumer.latest_frame
-                if frame_bytes:
-                    yield (
-                        b"--frame\r\n"
-                        b"Content-Type: image/jpeg\r\n\r\n" + frame_bytes + b"\r\n"
-                    )
-                log.info(f"Stream: Camera {camera_id} finished processing. Closing stream.")
+            if not consumer.running and consumer.status in TERMINAL_STATUSES:
+                if consumer.latest_frame:
+                    yield b"--frame\r\nContent-Type: image/jpeg\r\n\r\n" + consumer.latest_frame + b"\r\n"
                 break
-
             frame_bytes = consumer.latest_frame
-            # Only send if we have a new frame
             if frame_bytes and frame_bytes is not last_frame:
                 last_frame = frame_bytes
-                yield (
-                    b"--frame\r\n"
-                    b"Content-Type: image/jpeg\r\n\r\n" + frame_bytes + b"\r\n"
-                )
-            await asyncio.sleep(0.04)  # 25 fps max yield rate
+                yield b"--frame\r\nContent-Type: image/jpeg\r\n\r\n" + frame_bytes + b"\r\n"
+            await asyncio.sleep(0.04)
 
     return StreamingResponse(
         generate_frames(),
         media_type="multipart/x-mixed-replace; boundary=frame",
-        headers={
-            "Cache-Control": "no-cache, no-store, must-revalidate",
-            "Pragma": "no-cache",
-            "Access-Control-Allow-Origin": "*",
-        },
+        headers={"Cache-Control": "no-cache, no-store, must-revalidate", "Pragma": "no-cache"},
     )
 
 
-# ─── Camera Seat State ─────────────────────────────────────────────────────────
+@router.get("/camera/{camera_id}/frame", summary="Latest annotated frame as JPEG")
+async def camera_frame(camera_id: UUID):
+    """Single JPEG — used to show the final frame after a run has finished."""
+    from fastapi import Response
+    from app.cv.capture import camera_manager
+
+    consumer = camera_manager.consumers.get(camera_id)
+    if consumer is None or not consumer.latest_frame:
+        raise HTTPException(status_code=404, detail="No frame available.")
+    return Response(content=consumer.latest_frame, media_type="image/jpeg", headers={"Cache-Control": "no-store"})
+
+
+# ─── Camera Seat State (kept for compatibility) ────────────────────────────────
 
 @router.get(
     "/camera/{camera_id}/seats",
@@ -300,23 +456,14 @@ async def camera_seats(camera_id: UUID):
     """Return current occupancy state of all detected seats for a camera."""
     from app.cv.capture import camera_manager
 
-    if camera_id not in camera_manager.consumers:
+    consumer = camera_manager.consumers.get(camera_id)
+    if consumer is None:
         raise HTTPException(status_code=404, detail="Camera not found or not running.")
-
-    consumer = camera_manager.consumers[camera_id]
-    seats = [
-        {
-            "seat_id": s.seat_id,
-            "label": s.seat_label,
-            "status": consumer.seat_states.get(s.seat_id, "VACANT"),
-            "bbox": {"x1": s.x1, "y1": s.y1, "x2": s.x2, "y2": s.y2},
-        }
-        for s in consumer.detected_seats
-    ]
+    seats = consumer.seat_payload()
     return {
         "camera_id": str(camera_id),
-        "session_id": getattr(consumer, "session_id", None),
-        "status": getattr(consumer, "status", "IDLE"),
+        "session_id": consumer.session_id,
+        "status": consumer.status,
         "seat_count": len(seats),
         "seats": seats,
     }

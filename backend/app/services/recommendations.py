@@ -47,6 +47,16 @@ async def generate_recommendations(db: AsyncSession, cushion: int = 2, expansion
     result = await db.execute(query)
     rows = result.all()
 
+    # Snapshots are only produced by the seed script today (no snapshot job
+    # runs on live data), so mark recommendations derived from demo snapshots.
+    meta_rows = await db.execute(
+        select(OccupancySnapshot.metadata_).where(
+            OccupancySnapshot.startup_id.isnot(None),
+            OccupancySnapshot.snapshot_time >= seven_days_ago,
+        )
+    )
+    demo_basis = any(isinstance(m, dict) and m.get("demo") for m in meta_rows.scalars().all())
+
     recommendations = []
 
     for startup_id, building_id, avg_rate, avg_occupied, avg_allocated in rows:
@@ -111,6 +121,8 @@ async def generate_recommendations(db: AsyncSession, cushion: int = 2, expansion
                         data={
                             "building_id": str(building_id),
                             "reduction_seats": X,
+                            "basis": "occupancy_snapshots_7d",
+                            "demo": demo_basis,
                         }
                     )
                     db.add(rec)
@@ -162,6 +174,8 @@ async def generate_recommendations(db: AsyncSession, cushion: int = 2, expansion
                             data={
                                 "building_id": str(building_id),
                                 "expansion_seats": Y,
+                                "basis": "occupancy_snapshots_7d",
+                                "demo": demo_basis,
                             }
                         )
                         db.add(rec)

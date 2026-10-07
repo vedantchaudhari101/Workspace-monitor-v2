@@ -107,8 +107,13 @@ async def test_generate_recommendations_reduction():
     mock_count_result = MagicMock()
     mock_count_result.scalar_one = MagicMock(return_value=5)
 
+    # snapshot metadata used to flag demo-derived recommendations
+    mock_meta_result = MagicMock()
+    mock_meta_result.scalars = MagicMock(return_value=MagicMock(all=MagicMock(return_value=[{"demo": True}])))
+
     mock_db.execute.side_effect = [
         mock_result,
+        mock_meta_result,
         mock_existing_result,
         mock_count_result
     ]
@@ -122,6 +127,7 @@ async def test_generate_recommendations_reduction():
     assert recs[0].recommendation_type == RecommendationType.REDUCTION
     assert recs[0].impact_seats == -2  # unused (5 - 2 = 3) - cushion (1) = 2 seats to reduce
     assert recs[0].impact_revenue == 200.0
+    assert recs[0].data["demo"] is True
 
 
 @pytest.mark.asyncio

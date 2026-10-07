@@ -15,7 +15,8 @@ from app.models.startup import Startup  # noqa: F401
 from app.models.employee import Employee  # noqa: F401
 from app.models.seat_allocation import SeatAllocation  # noqa: F401
 from app.models.camera import Camera  # noqa: F401
-from app.models.occupancy_event import OccupancyEvent, OccupancyStatus  # noqa: F401
+from app.models.analysis_session import AnalysisSession, SessionStatus  # noqa: F401
+from app.models.occupancy_event import OccupancyEvent, OccupancyStatus, EventSource  # noqa: F401
 from app.models.occupancy_snapshot import OccupancySnapshot, PeriodType  # noqa: F401
 from app.models.recommendation import (  # noqa: F401
     Recommendation,
@@ -39,7 +40,10 @@ __all__ = [
     "Employee",
     "SeatAllocation",
     "Camera",
+    "AnalysisSession",
+    "SessionStatus",
     "OccupancyEvent",
+    "EventSource",
     "OccupancyStatus",
     "OccupancySnapshot",
     "PeriodType",

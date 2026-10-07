@@ -67,3 +67,8 @@ logs/
 # Misc
 *.bak
 *.tmp
+
+# Runtime artefacts
+*.pt
+*.db
+backend/uploads/

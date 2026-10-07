@@ -10,7 +10,12 @@ Populates the database with realistic sample data matching the project spec:
 
 Usage:
     cd backend
-    python -m scripts.seed_data
+    python -m scripts.seed_data            # seed an empty database
+    python -m scripts.seed_data --reset    # wipe everything, then seed
+
+Everything created here is DEMO data: seats are tagged source=SEED, events
+source=SEED, snapshots/recommendations carry {"demo": true}. The UI labels it
+as demo and excludes it from analytics unless demo data is switched on.
 
 Idempotent: checks for existing data before inserting.
 """
@@ -56,16 +61,23 @@ def _now() -> datetime:
     return datetime.now(timezone.utc)
 
 
-async def seed_database() -> None:
+async def seed_database(reset: bool = False) -> None:
     """Main seed function — creates all sample data."""
     settings = get_settings()
     engine = create_async_engine(settings.database_url, echo=False)
     session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
-    # Create all tables (dev convenience)
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-    print("SUCCESS: Tables created / verified")
+    if reset:
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.drop_all)
+            from sqlalchemy import text as _text
+            await conn.execute(_text("DROP TABLE IF EXISTS alembic_version"))
+        print("Existing data removed")
+
+    # Bring the schema to the latest migration (same path the API uses).
+    from app.db_migrate import run_migrations
+    run_migrations()
+    print("SUCCESS: Schema migrated")
 
     async with session_factory() as session:
         # ── Check idempotency ────────────────────────────────────────
@@ -161,6 +173,7 @@ async def seed_database() -> None:
                     width=80.0,
                     height=80.0,
                     is_active=True,
+                    source="SEED",
                 )
                 session.add(seat)
                 all_seats.append(seat)
@@ -240,7 +253,7 @@ async def seed_database() -> None:
                 resolution_width=1920,
                 resolution_height=1080,
                 fps=30,
-                config={"codec": "h264", "bitrate": "4000k"},
+                config={"codec": "h264", "bitrate": "4000k", "source_type": "mock"},
             )
             session.add(camera)
         await session.flush()
@@ -275,6 +288,7 @@ async def seed_database() -> None:
                     person_bbox={"x": seat.x_coordinate, "y": seat.y_coordinate, "w": 60, "h": 80}
                     if is_occupied
                     else None,
+                    source="SEED",
                 )
                 session.add(event)
                 event_count += 1
@@ -298,7 +312,7 @@ async def seed_database() -> None:
                 occupied_seats=occupied,
                 occupancy_rate=float(occ_pct),
                 period_type=PeriodType.HOURLY,
-                metadata_={"peak_zone": random.choice(zone_labels), "avg_confidence": 0.92},
+                metadata_={"peak_zone": random.choice(zone_labels), "avg_confidence": 0.92, "demo": True},
             )
             session.add(snapshot)
             snapshot_count += 1
@@ -318,6 +332,7 @@ async def seed_database() -> None:
                     occupied_seats=startup_occupied,
                     occupancy_rate=round(startup_occ_rate, 1),
                     period_type=PeriodType.HOURLY,
+                    metadata_={"demo": True},
                 )
                 session.add(snapshot_s)
                 snapshot_count += 1
@@ -340,7 +355,7 @@ async def seed_database() -> None:
             status=RecommendationStatus.PENDING,
             impact_seats=5,
             impact_revenue=2250.0,
-            data={"current_util": 53, "recommended_seats": 10, "current_seats": 15},
+            data={"current_util": 53, "recommended_seats": 10, "current_seats": 15, "demo": True},
         )
         rec2 = Recommendation(
             startup_id=startups[3].id,  # Startup D — near capacity
@@ -355,7 +370,7 @@ async def seed_database() -> None:
             status=RecommendationStatus.PENDING,
             impact_seats=3,
             impact_revenue=1650.0,
-            data={"current_util": 88, "recommended_seats": 28, "current_seats": 25},
+            data={"current_util": 88, "recommended_seats": 28, "current_seats": 25, "demo": True},
         )
         session.add_all([rec1, rec2])
 
@@ -395,4 +410,6 @@ async def seed_database() -> None:
 
 
 if __name__ == "__main__":
-    asyncio.run(seed_database())
+    import sys
+
+    asyncio.run(seed_database(reset="--reset" in sys.argv))
