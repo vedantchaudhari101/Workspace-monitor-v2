@@ -135,6 +135,16 @@ To leave the server, type `exit`. To come back, run the same `ssh ...` command a
 
 ## Part 5 — Copy the project to the server
 
+**Easiest: get it straight from GitHub.** In the **SSH window** (the server), run:
+
+```bash
+git clone https://github.com/vedantchaudhari101/Workspace-monitor-v2.git workspace-monitor
+cd workspace-monitor
+ls
+```
+
+Then skip to Part 6. If you'd rather upload the zip from your laptop, follow the steps below instead.
+
 1. Open a **second** PowerShell window on your laptop and leave the SSH window open. Run:
 
    ```powershell
@@ -295,7 +305,7 @@ The demo data option only applies the first time the app starts with an empty da
    bash deploy/oracle/setup.sh                          # answer Y to keep settings
    ```
 
-**From GitHub**, once the code is in a repository you can access, a `git clone` replaces the zip. Updating is then:
+**From GitHub** (if you used `git clone` in Part 5):
 
 ```bash
 cd ~/workspace-monitor && git pull && bash deploy/oracle/setup.sh
