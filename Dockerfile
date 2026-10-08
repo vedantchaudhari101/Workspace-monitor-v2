@@ -3,10 +3,12 @@
 #
 # Builds the React app, installs the FastAPI backend with CPU-only PyTorch,
 # bakes in the YOLO weights and serves everything from one port.
-# Works as-is on Hugging Face Spaces (Docker SDK), Render, Railway or Fly.io.
+# Builds on x86_64 and ARM64 (e.g. Oracle Cloud Ampere A1).
 #
 #   docker build -t workspace-monitor .
-#   docker run -p 7860:7860 workspace-monitor
+#   docker run -p 8000:8000 workspace-monitor
+#
+# For a public server with HTTPS, use deploy/oracle/ (see DEPLOYMENT.md).
 # =============================================================================
 
 # ── Stage 1: web app ─────────────────────────────────────────────────────────
@@ -36,12 +38,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         libglib2.0-0 libgomp1 curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Hugging Face Spaces run containers as uid 1000.
 RUN useradd -m -u 1000 app
 WORKDIR /app
 
 # CPU-only PyTorch first, so ultralytics doesn't pull the multi-GB CUDA build.
-RUN pip install torch torchvision --index-url ${TORCH_INDEX_URL}
+# On ARM64 the regular PyPI wheels are already CPU-only.
+RUN if [ "$(uname -m)" = "x86_64" ]; then \
+        pip install torch torchvision --index-url ${TORCH_INDEX_URL}; \
+    else \
+        pip install torch torchvision; \
+    fi
 COPY backend/requirements.txt ./
 RUN pip install -r requirements.txt
 
@@ -57,7 +63,7 @@ RUN mkdir -p models samples /data \
 
 USER app
 
-ENV PORT=7860 \
+ENV PORT=8000 \
     FRONTEND_DIST=/app/frontend_dist \
     SQLITE_PATH=/data/workspace_monitor.db \
     UPLOAD_DIR=/data/uploads \
@@ -67,7 +73,7 @@ ENV PORT=7860 \
     SAMPLE_VIDEO_CREDIT="${SAMPLE_VIDEO_CREDIT}" \
     MAX_UPLOAD_MB=200
 
-EXPOSE 7860
+EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
     CMD curl -fs http://localhost:${PORT}/health || exit 1
 

@@ -1,0 +1,52 @@
+# =============================================================================
+# Workspace Monitor — public server (Oracle Cloud or any Linux VM)
+#
+#   app    : web app + API + computer-vision pipeline (SQLite on a volume)
+#   caddy  : public entrance on ports 80/443, gets HTTPS certificates itself
+#
+# Settings come from deploy/oracle/.env, written by setup.sh.
+#   sudo docker compose -f deploy/oracle/docker-compose.yml up -d --build
+# Data lives in Docker volumes (workspace-monitor_appdata), not in this folder,
+# so replacing the project folder with a new version keeps your data.
+# =============================================================================
+
+name: workspace-monitor
+
+services:
+  app:
+    build:
+      context: ../..
+    environment:
+      PORT: "8000"
+      SECRET_KEY: ${SECRET_KEY:?run deploy/oracle/setup.sh first}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@workspace.dev}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?run deploy/oracle/setup.sh first}
+      SEED_DEMO: ${SEED_DEMO:-true}
+      SHOW_DEMO_LOGIN: ${SHOW_DEMO_LOGIN:-false}
+      MAX_UPLOAD_MB: ${MAX_UPLOAD_MB:-200}
+    volumes:
+      - appdata:/data
+    expose:
+      - "8000"
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:2
+    depends_on:
+      - app
+    environment:
+      SITE_ADDRESS: ${SITE_ADDRESS:-:80}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    restart: unless-stopped
+
+volumes:
+  appdata:
+  caddy_data:
+  caddy_config:

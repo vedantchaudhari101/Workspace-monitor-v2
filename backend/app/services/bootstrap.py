@@ -9,14 +9,14 @@ from __future__ import annotations
 
 import uuid
 
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
 from app.models import Building, Camera, Floor, User, UserRole, Zone, ZoneType
 from app.models.analysis_session import AnalysisSession, SessionStatus
 from app.utils.logger import get_logger
-from app.utils.security import hash_password
+from app.utils.security import hash_password, verify_password
 
 logger = get_logger(__name__)
 
@@ -56,8 +56,10 @@ async def bootstrap(session: AsyncSession) -> None:
     """Create the admin user and a default workspace when the database is empty."""
     settings = get_settings()
 
-    users = (await session.execute(select(func.count(User.id)))).scalar_one()
-    if users == 0:
+    # The configured admin account always matches ADMIN_EMAIL / ADMIN_PASSWORD,
+    # so changing the password in the environment and restarting resets it.
+    admin = (await session.execute(select(User).where(User.email == settings.ADMIN_EMAIL))).scalar_one_or_none()
+    if admin is None:
         session.add(
             User(
                 email=settings.ADMIN_EMAIL,
@@ -68,6 +70,12 @@ async def bootstrap(session: AsyncSession) -> None:
             )
         )
         logger.info(f"Bootstrap: created admin user {settings.ADMIN_EMAIL}")
+    else:
+        if not admin.hashed_password or not verify_password(settings.ADMIN_PASSWORD, admin.hashed_password):
+            admin.hashed_password = hash_password(settings.ADMIN_PASSWORD)
+            logger.info(f"Bootstrap: admin password updated from configuration for {settings.ADMIN_EMAIL}")
+        admin.is_active = True
+        admin.role = UserRole.ADMIN
 
     building = (
         await session.execute(select(Building).where(Building.is_active.is_(True)).order_by(Building.created_at).limit(1))

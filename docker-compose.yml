@@ -3,7 +3,8 @@
 # =============================================================================
 # One app container (API + CV pipeline + web app) and PostgreSQL 16.
 #   docker compose up --build        → http://localhost:8000
-# Without PostgreSQL, `docker build . && docker run -p 7860:7860` uses SQLite.
+# Without PostgreSQL, `docker build . && docker run -p 8000:8000` uses SQLite.
+# For a public server with HTTPS, use deploy/oracle/docker-compose.yml instead.
 # =============================================================================
 
 services:

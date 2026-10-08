@@ -1,0 +1,9 @@
+# SITE_ADDRESS is either a domain (Caddy fetches an HTTPS certificate for it
+# automatically) or ":80" to serve plain HTTP on the server's IP address.
+{$SITE_ADDRESS} {
+	encode zstd gzip
+	reverse_proxy app:8000 {
+		# Stream the live video frames immediately instead of buffering them.
+		flush_interval -1
+	}
+}

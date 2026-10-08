@@ -84,11 +84,11 @@ Sign in with the bootstrap admin from `.env` (default `admin@workspace.dev` / `A
 
 ```bash
 docker build -t workspace-monitor .
-docker run -p 7860:7860 -e SEED_DEMO=true workspace-monitor      # SQLite, http://localhost:7860
+docker run -p 8000:8000 -e SEED_DEMO=true workspace-monitor      # SQLite, http://localhost:8000
 docker compose up --build                                          # with PostgreSQL, http://localhost:8000
 ```
 
-Hosting for a public demo link is covered in [DEPLOYMENT.md](DEPLOYMENT.md).
+Hosting a public link for free on Oracle Cloud, step by step, is covered in [DEPLOYMENT.md](DEPLOYMENT.md).
 
 ---
 

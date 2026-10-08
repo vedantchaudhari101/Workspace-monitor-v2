@@ -89,8 +89,9 @@ async def seed_database(reset: bool = False) -> None:
         # ── 1. Admin User ────────────────────────────────────────────
         print("Creating admin user...")
         admin_user = User(
-            email="admin@workspace.dev",
-            hashed_password=hash_password("Admin@12345"),
+            # Same account the API bootstraps, so ADMIN_PASSWORD is honoured.
+            email=settings.ADMIN_EMAIL,
+            hashed_password=hash_password(settings.ADMIN_PASSWORD),
             full_name="Admin User",
             role=UserRole.ADMIN,
             is_active=True,
