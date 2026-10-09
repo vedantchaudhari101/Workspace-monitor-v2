@@ -7,7 +7,8 @@
   inset: 0;
   z-index: 0;
   pointer-events: none;
-  mask-image: radial-gradient(120% 90% at 62% 70%, #000 40%, transparent 100%);
+  opacity: 0.8;
+  mask-image: radial-gradient(110% 85% at 58% 62%, #000 45%, transparent 100%);
 }
 
 .cursor-ring {
@@ -201,4 +202,163 @@
 
   .tab-link.active { color: var(--text); }
   .tab-link.active svg { color: var(--scan); }
+}
+
+/* ── Shutter page transition ─────────────────────────────────────────── */
+
+.shutter {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: var(--rail-w);
+  z-index: 40;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.shutter-panel {
+  position: absolute;
+  inset: 0;
+  transform: translateY(100%);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: clamp(24px, 4vw, 56px);
+  background: var(--surface);
+  border-top: 1px solid var(--scan);
+  border-bottom: 1px solid var(--line-strong);
+  box-shadow: 0 -24px 60px rgba(127, 219, 240, 0.08);
+  will-change: transform;
+}
+
+.shutter-panel::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 120px;
+  background: linear-gradient(180deg, rgba(127, 219, 240, 0.1), transparent);
+  pointer-events: none;
+}
+
+.shutter-grid {
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(transparent 0 calc(100% - 1px), rgba(214, 226, 236, 0.05) calc(100% - 1px)) 0 0 / 100% 56px,
+    linear-gradient(90deg, transparent 0 calc(100% - 1px), rgba(214, 226, 236, 0.05) calc(100% - 1px)) 0 0 / 56px 100%;
+  mask-image: linear-gradient(180deg, #000, transparent 85%);
+}
+
+.shutter-top {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  color: var(--text-2);
+  font-size: var(--fs-sm);
+}
+
+.shutter-copy {
+  position: relative;
+  opacity: 0;
+}
+
+.shutter-title {
+  font-size: clamp(3.25rem, 10vw, 9rem);
+  font-weight: 500;
+  letter-spacing: -0.055em;
+  line-height: 0.88;
+  color: var(--text);
+}
+
+.shutter-tagline {
+  margin-top: var(--s-4);
+  color: var(--text-2);
+  font-size: var(--fs-md);
+}
+
+@media (max-width: 900px) {
+  .shutter { left: 0; }
+}
+
+/* New page sections rise in as the shutter lifts. */
+.page-wrap.is-entering .page > * {
+  animation: page-rise 0.75s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.page-wrap.is-entering .page > *:nth-child(2) { animation-delay: 70ms; }
+.page-wrap.is-entering .page > *:nth-child(3) { animation-delay: 140ms; }
+.page-wrap.is-entering .page > *:nth-child(4) { animation-delay: 210ms; }
+.page-wrap.is-entering .page > *:nth-child(5) { animation-delay: 280ms; }
+.page-wrap.is-entering .page > *:nth-child(n + 6) { animation-delay: 340ms; }
+
+@keyframes page-rise {
+  from { opacity: 0; transform: translateY(36px); }
+  to { opacity: 1; transform: none; }
+}
+
+/* ── Intro loader ────────────────────────────────────────────────────── */
+
+.intro {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: clamp(24px, 4vw, 56px);
+  background: var(--bg);
+  will-change: transform;
+}
+
+.intro-top {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  color: var(--text-2);
+  font-size: var(--fs-sm);
+}
+
+.intro-bottom {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--s-5);
+}
+
+.intro-label {
+  color: var(--text-2);
+  font-size: var(--fs-md);
+}
+
+.intro-count {
+  font-size: clamp(4rem, 14vw, 11rem);
+  font-weight: 500;
+  letter-spacing: -0.06em;
+  line-height: 0.85;
+  font-variant-numeric: tabular-nums;
+}
+
+.intro-track {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 2px;
+  background: var(--surface-3);
+}
+
+.intro-track span {
+  display: block;
+  height: 100%;
+  background: var(--scan);
+  transform-origin: left;
+}
+
+/* Quieter background behind the sign-in copy. */
+.shell:has(.login) .ambient-field {
+  opacity: 0.5;
 }
